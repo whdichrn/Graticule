@@ -10,6 +10,8 @@
     <string>Graticule</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>Graticule</string>
     <key>CFBundleIdentifier</key>
     <string>io.graticule.app</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -19,7 +21,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.4.0</string>
+    <string>0.5.0</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>NSHumanReadableCopyright</key>
@@ -100,6 +102,22 @@
                 <string>hdf5</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeName</key>
+            <string>NumPy Archive</string>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>LSHandlerRank</key>
+            <string>Alternate</string>
+            <key>LSItemContentTypes</key>
+            <array>
+                <string>org.numpy.npz</string>
+            </array>
+            <key>CFBundleTypeExtensions</key>
+            <array>
+                <string>npz</string>
+            </array>
+        </dict>
     </array>
     <key>UTImportedTypeDeclarations</key>
     <array>
@@ -163,6 +181,24 @@
                 <key>public.mime-type</key>
                 <array>
                     <string>application/x-hdf5</string>
+                </array>
+            </dict>
+        </dict>
+        <dict>
+            <key>UTTypeIdentifier</key>
+            <string>org.numpy.npz</string>
+            <key>UTTypeDescription</key>
+            <string>NumPy Zipped Array Archive</string>
+            <key>UTTypeConformsTo</key>
+            <array>
+                <string>public.data</string>
+                <string>public.zip-archive</string>
+            </array>
+            <key>UTTypeTagSpecification</key>
+            <dict>
+                <key>public.filename-extension</key>
+                <array>
+                    <string>npz</string>
                 </array>
             </dict>
         </dict>

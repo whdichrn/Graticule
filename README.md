@@ -1,10 +1,11 @@
 # Graticule
 
-Native macOS SwiftUI and Python/GMT 6 viewer and publication-grade cartographic plotter for NetCDF, HDF, and GMT grid datasets.
+Native macOS SwiftUI and Python/GMT 6 viewer and publication-grade cartographic plotter for NetCDF, HDF, GMT grid, and NumPy `.npz` datasets.
 
 ## Highlights
 
-- **Native macOS App (`macos/`)**: SwiftUI interface with Liquid Glass styling on macOS 26/27 SDK, multi-tab windows, live Inspector controls, interactive pan/zoom canvas, coordinate hover readout, Path Bar subregion history, and Quick Look-style dataset overview cards.
+- **Native macOS App (`macos/`)**: SwiftUI interface with Liquid Glass styling (including layered `Graticule.icon` app icon) on macOS 26/27, compatible down to macOS 13.0+, multi-tab windows, live Inspector controls, interactive pan/zoom canvas, coordinate hover readout, Path Bar subregion history, and Quick Look-style dataset overview cards.
+- **Format Support**: NetCDF (`.nc`, `.nc4`, `.cdf`), GMT grids (`.grd`), HDF5 (`.h5`, `.hdf`), and NumPy archives (`.npz` with automatic cached NetCDF conversion).
 - **Large-Grid Performance**: Fast contiguous NetCDF Level-of-Detail (LOD) decimation handles multi-gigabyte global grids (such as GEBCO 15-arcsecond bathymetry) in seconds, while **Export Image** always renders from full-resolution source data at publication DPI (300+ DPI).
 - **Interactive Subregion & Polar Presets**: Box-select geographic subregions (drill down in-tab with the Path Bar or open in a new native tab with `⌥`-drag) and jump to Arctic/Antarctic stereographic presets.
 - **Reproducible GMT 6 Modern Mode Workflow**: Inspect, edit, synchronize, or export standalone `gmt` bash scripts at any time.

@@ -4,7 +4,7 @@ import Foundation
 import UniformTypeIdentifiers
 
 enum FileAssociationManager {
-    static let supportedExtensions: [String] = ["nc", "nc4", "cdf", "grd", "h5", "hdf"]
+    static let supportedExtensions: [String] = ["nc", "nc4", "cdf", "grd", "h5", "hdf", "npz"]
 
     struct AssociationStatus: Identifiable, Sendable {
         let ext: String
@@ -224,6 +224,9 @@ final class BackendEnvironment: ObservableObject {
             candidates.append(sibling)
         }
         candidates.append(contentsOf: [
+            "/opt/local/lib/gmt6/bin/gmt",
+            "/opt/local/bin/gmt6",
+            "/opt/local/bin/gmt",
             "/opt/homebrew/bin/gmt",
             "/usr/local/bin/gmt",
             "/usr/bin/gmt"

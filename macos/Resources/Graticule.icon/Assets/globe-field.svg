@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="globeClip">
+      <circle cx="512" cy="512" r="336"/>
+    </clipPath>
+    <linearGradient id="oceanBase" x1="18%" y1="85%" x2="82%" y2="15%">
+      <stop offset="0%" stop-color="#0A2B66"/>
+      <stop offset="52%" stop-color="#0E5A96"/>
+      <stop offset="100%" stop-color="#1785B0"/>
+    </linearGradient>
+    <linearGradient id="tealBand" x1="15%" y1="75%" x2="85%" y2="25%">
+      <stop offset="0%" stop-color="#0E7C94"/>
+      <stop offset="55%" stop-color="#1DB5A4"/>
+      <stop offset="100%" stop-color="#58D4AA"/>
+    </linearGradient>
+    <linearGradient id="amberBand" x1="20%" y1="70%" x2="90%" y2="20%">
+      <stop offset="0%" stop-color="#7CD67C"/>
+      <stop offset="45%" stop-color="#F2C044"/>
+      <stop offset="100%" stop-color="#F08A38"/>
+    </linearGradient>
+    <linearGradient id="coralBand" x1="30%" y1="60%" x2="90%" y2="15%">
+      <stop offset="0%" stop-color="#F2723B"/>
+      <stop offset="100%" stop-color="#DF3E2E"/>
+    </linearGradient>
+    <radialGradient id="sphereShade" cx="38%" cy="32%" r="68%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="58%" stop-color="#FFFFFF" stop-opacity="0.0"/>
+      <stop offset="100%" stop-color="#041229" stop-opacity="0.28"/>
+    </radialGradient>
+  </defs>
+
+  <g clip-path="url(#globeClip)">
+    <rect x="160" y="160" width="704" height="704" fill="url(#oceanBase)"/>
+
+    <!-- Mid oceanic teal flow band -->
+    <path d="M 140 620 C 310 515, 490 615, 680 465 C 770 395, 835 335, 890 285 L 890 890 L 140 890 Z"
+          fill="url(#tealBand)" opacity="0.92"/>
+
+    <!-- Deep ocean trench shadow arc in lower right -->
+    <path d="M 140 770 C 330 680, 520 745, 880 575 L 880 890 L 140 890 Z"
+          fill="#0B3B78" opacity="0.82"/>
+
+    <!-- Warm shelf / thermal contour band -->
+    <path d="M 140 465 C 300 375, 455 485, 625 360 C 735 280, 815 210, 880 175 L 880 460 C 750 540, 610 565, 445 565 C 310 565, 220 575, 140 625 Z"
+          fill="url(#amberBand)" opacity="0.93"/>
+
+    <!-- Coral high-anomaly crest in upper-right quadrant -->
+    <path d="M 380 165 C 470 250, 575 290, 710 230 C 785 195, 835 165, 885 150 L 885 330 C 795 365, 705 405, 595 385 C 485 365, 415 285, 345 165 Z"
+          fill="url(#coralBand)" opacity="0.90"/>
+
+    <!-- Gentle spherical depth shading -->
+    <circle cx="512" cy="512" r="336" fill="url(#sphereShade)"/>
+  </g>
+</svg>

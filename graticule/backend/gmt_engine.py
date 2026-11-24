@@ -24,6 +24,8 @@ from collections import OrderedDict
 import uuid
 import numpy as np
 
+from .npz_cache import resolve_nc_path
+
 
 @dataclass
 class PlotConfig:
@@ -379,17 +381,49 @@ class GMTEngine:
     def _find_gmt(cls, explicit_path=None):
         candidates = [explicit_path, os.environ.get("GMT_BIN"),
                       str(Path(sys.executable).parent / "gmt"), shutil.which("gmt"),
+                      "/opt/local/lib/gmt6/bin/gmt", "/opt/local/bin/gmt6", "/opt/local/bin/gmt",
                       "/opt/homebrew/bin/gmt", "/usr/local/bin/gmt", "/usr/bin/gmt"]
         return next((os.path.abspath(p) for p in candidates if p and os.path.isfile(p) and os.access(p, os.X_OK)), None)
 
     def close(self):
         self._cache_owner.cleanup()
 
+    def child_path(self, base_path: Optional[str] = None) -> str:
+        """Build a child PATH containing GMT, MacPorts/Homebrew bins (for gs), and Python."""
+        raw_path = os.environ.get("PATH", "") if base_path is None else base_path
+        gmt_dir = os.path.dirname(self.gmt_bin)
+        candidates: List[str] = [gmt_dir]
+
+        # Handle MacPorts layout such as /opt/local/lib/gmt6/bin/gmt -> /opt/local/bin
+        gmt_path = Path(self.gmt_bin)
+        for parent in gmt_path.parents:
+            if parent.name.startswith("gmt") and parent.parent.name == "lib":
+                prefix_bin = str(parent.parent.parent / "bin")
+                candidates.append(prefix_bin)
+                break
+
+        candidates.extend([
+            str(Path(sys.executable).parent),
+            "/opt/local/bin",
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+        ])
+        candidates.extend(raw_path.split(os.pathsep) if raw_path else [])
+        candidates.extend(["/usr/bin", "/bin"])
+
+        seen = set()
+        ordered: List[str] = []
+        for entry in candidates:
+            if entry and entry not in seen:
+                seen.add(entry)
+                ordered.append(entry)
+        return os.pathsep.join(ordered)
+
     def _env(self, directory):
         env = os.environ.copy()
         env.update(GMT_USERDIR=directory, GMT_TMPDIR=directory,
                    GMT_SESSION_NAME=uuid.uuid4().hex, GMT_HISTORY="false")
-        env["PATH"] = os.path.dirname(self.gmt_bin) + os.pathsep + env.get("PATH", "")
+        env["PATH"] = self.child_path(env.get("PATH", ""))
         return env
 
     def _run(self, args, input=None):
@@ -412,15 +446,28 @@ class GMTEngine:
         return value
 
     @staticmethod
+    def _resolve_grid_spec(grid_spec: str) -> str:
+        file_path, var_name, slice_tuple = GMTEngine._parse_grid_spec(grid_spec)
+        if not file_path or not file_path.lower().endswith(".npz"):
+            return grid_spec
+        resolved = resolve_nc_path(file_path)
+        if var_name is None:
+            return resolved
+        suffix = "[" + ",".join(str(i) for i in slice_tuple) + "]" if slice_tuple else ""
+        return f"{resolved}?{var_name}{suffix}"
+
+    @staticmethod
     def _source_key(grid_spec):
-        path = grid_spec.split("?", 1)[0]
+        resolved_spec = GMTEngine._resolve_grid_spec(grid_spec)
+        path = resolved_spec.split("?", 1)[0]
         stat = os.stat(path)
-        return grid_spec, stat.st_mtime_ns, stat.st_size
+        return resolved_spec, stat.st_mtime_ns, stat.st_size
 
     def get_version(self):
         return subprocess.run([self.gmt_bin, "--version"], capture_output=True, text=True, check=True).stdout.strip()
 
     def get_grid_info(self, grid_spec, force_refresh=False, scan=True):
+        grid_spec = self._resolve_grid_spec(grid_spec)
         key = self._source_key(grid_spec) + (scan,)
         with self._lock:
             if not force_refresh and key in self._grid_info_cache:
@@ -859,7 +906,7 @@ class GMTEngine:
             return self._remember(self._preview_cache, key, target, 8)
 
     def resolve_config(self, config):
-        config = replace(config, slice_indices=dict(config.slice_indices))
+        config = replace(config, grid_spec=self._resolve_grid_spec(config.grid_spec), slice_indices=dict(config.slice_indices))
         if config.region is None:
             info = self.get_grid_info(config.grid_spec, scan=False)
             config.region = tuple(info[k] for k in ("x_min", "x_max", "y_min", "y_max"))
@@ -1007,7 +1054,7 @@ class GMTEngine:
         os.makedirs(target_dir, exist_ok=True)
 
         zip_url = "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip"
-        headers = {"User-Agent": "Graticule/0.4.0"}
+        headers = {"User-Agent": "Graticule/0.5.0"}
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
             tmp_path = tmp_zip.name
@@ -1195,6 +1242,11 @@ class GMTEngine:
                 render_cfg = replace(config, dpi=render_dpi)
         with tempfile.TemporaryDirectory() as td:
             env = self._env(td)
+            if fmt != "ps" and not shutil.which("gs", path=env["PATH"]):
+                raise RuntimeError(
+                    "Ghostscript (gs) was not found in PATH for psconvert. "
+                    "Install Ghostscript (for example via conda/micromamba, Homebrew, or MacPorts) and ensure gs is accessible."
+                )
             ps_target = os.path.join(td, "map")
             for args in self._commands(render_cfg, ps_target, "ps", grid):
                 res = subprocess.run([self.gmt_bin, *args], cwd=td, env=env, capture_output=True, text=True, timeout=180)

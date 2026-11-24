@@ -225,7 +225,7 @@ struct PlotCanvasContainerView: View {
         AdaptiveEmptyState(
             "Open a NetCDF or GMT Grid",
             systemImage: "globe.asia.australia",
-            description: "Drop .nc, .nc4, .cdf, .grd, or .h5 files here, or open from Finder."
+            description: "Drop .nc, .nc4, .cdf, .grd, .h5, or .npz files here, or open from Finder."
         ) {
             Button("Open Dataset…") {
                 workspace.openFileDialog(in: session.id)

@@ -41,7 +41,7 @@ struct DatasetSidebarView: View {
                     AdaptiveEmptyState(
                         "No Datasets",
                         systemImage: "doc.badge.plus",
-                        description: "Open or drop .nc / .grd files to explore."
+                        description: "Open or drop .nc / .grd / .npz files to explore."
                     )
                     .listRowSeparator(.hidden)
                 } else {

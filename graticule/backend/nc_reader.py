@@ -9,6 +9,8 @@ import os
 import xarray as xr
 import numpy as np
 
+from .npz_cache import resolve_nc_path
+
 
 @dataclass
 class VarMeta:
@@ -59,12 +61,12 @@ class NetCDFMetadataReader:
 
     @classmethod
     def open(cls, file_path: str) -> DatasetMeta:
-        """Opens a NetCDF dataset and extracts metadata without reading data arrays."""
+        """Opens a NetCDF or NPZ dataset and extracts metadata lazily."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
 
-        # Open lazily without decoding timedelta if not needed, engine='netcdf4'
-        ds = xr.open_dataset(file_path, decode_times=True)
+        readable_path = resolve_nc_path(file_path)
+        ds = xr.open_dataset(readable_path, decode_times=True)
         try:
             dimensions = {str(k): int(v) for k, v in ds.sizes.items()}
 
@@ -223,5 +225,6 @@ class NetCDFMetadataReader:
             if not isinstance(index, int) or not 0 <= index < size:
                 raise ValueError(f"Slice {dim}={index} is outside 0..{size-1}.")
             indices.append(str(index))
+        readable_path = resolve_nc_path(file_path)
         suffix = "["+",".join(indices)+"]" if indices else ""
-        return f"{os.path.abspath(file_path)}?{var_meta.name}{suffix}"
+        return f"{readable_path}?{var_meta.name}{suffix}"

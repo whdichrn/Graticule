@@ -300,3 +300,80 @@ def test_install_cn_border_from_zip(tmp_path):
     assert (dest / 'CN-border-La.gmt').is_file()
     assert (dest / 'ten-dash-line.gmt').is_file()
     assert not (dest / 'README.txt').exists()
+
+
+def test_npz_multishape_cartesian_and_geographic_render(engine, tmp_path):
+    import numpy as np
+    from graticule.backend.nc_reader import NetCDFMetadataReader as Reader
+
+    # Multi-shape coordinate-less NPZ (mirrors real task_00.npz layout)
+    multi_npz = tmp_path / 'cutout_task.npz'
+    z_0 = np.linspace(-5000, -500, 48 * 72, dtype=np.int16).reshape(48, 72)
+    t_0 = np.linspace(10, 40, 32 * 32, dtype=np.int8).reshape(32, 32)
+    np.savez(multi_npz, z_0=z_0, t_0=t_0)
+
+    meta = Reader.open(str(multi_npz))
+    assert meta.file_path == str(multi_npz.resolve())
+    assert meta.variables['z_0'].is_2d_plotable and meta.variables['t_0'].is_2d_plotable
+    assert not meta.variables['z_0'].is_geographic
+
+    for vname in ('z_0', 't_0'):
+        var = meta.variables[vname]
+        spec = Reader.build_gmt_grid_spec(str(multi_npz), var, {})
+        out = tmp_path / f'{vname}.png'
+        cfg = PlotConfig(
+            grid_spec=spec,
+            source_path=str(multi_npz),
+            variable_name=vname,
+            projection='X12c/8c',
+            is_geographic=False,
+            show_coast=False,
+            dpi=72,
+        )
+        engine.render(cfg, str(out))
+        assert out.is_file() and out.stat().st_size > 1000
+
+    # Geographic NPZ with 2D uniform meshgrid coordinates
+    geo_npz = tmp_path / 'geo_mesh.npz'
+    lon1d = np.linspace(100.0, 130.0, 31)
+    lat1d = np.linspace(10.0, 40.0, 25)
+    lon2d, lat2d = np.meshgrid(lon1d, lat1d)
+    sst = (25.0 + np.sin(np.deg2rad(lat2d)) * np.cos(np.deg2rad(lon2d))).astype(np.float32)
+    np.savez(geo_npz, lon=lon2d, lat=lat2d, sst=sst)
+
+    geo_meta = Reader.open(str(geo_npz))
+    assert geo_meta.variables['sst'].is_2d_plotable
+    assert geo_meta.variables['sst'].is_geographic
+    assert 'lon' not in geo_meta.variables and 'lat' not in geo_meta.variables
+    geo_spec = Reader.build_gmt_grid_spec(str(geo_npz), geo_meta.variables['sst'], {})
+    geo_out = tmp_path / 'geo_sst.png'
+    engine.render(
+        PlotConfig(
+            grid_spec=geo_spec,
+            source_path=str(geo_npz),
+            variable_name='sst',
+            projection='M12c',
+            is_geographic=True,
+            show_coast=False,
+            dpi=72,
+        ),
+        str(geo_out),
+    )
+    assert geo_out.is_file() and geo_out.stat().st_size > 1000
+
+
+def test_child_path_macports_and_minimal_env_render(engine, grids, tmp_path, monkeypatch):
+    from graticule.backend.gmt_engine import GMTEngine
+
+    fake = object.__new__(GMTEngine)
+    fake.gmt_bin = '/opt/local/lib/gmt6/bin/gmt'
+    parts = fake.child_path('/usr/bin:/bin').split(os.pathsep)
+    assert parts[0] == '/opt/local/lib/gmt6/bin'
+    assert '/opt/local/bin' in parts
+    assert '/opt/homebrew/bin' in parts
+    assert '/usr/bin' in parts
+
+    monkeypatch.setenv('PATH', '/usr/bin:/bin')
+    out = tmp_path / 'minimal_path.png'
+    engine.render(config(grids, show_coast=False), str(out))
+    assert out.is_file() and out.stat().st_size > 1000

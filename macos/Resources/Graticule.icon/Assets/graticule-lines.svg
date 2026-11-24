@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <clipPath id="rimClip">
+      <circle cx="512" cy="512" r="336"/>
+    </clipPath>
+  </defs>
+
+  <!-- Interior graticule clipped cleanly to the sphere boundary -->
+  <g clip-path="url(#rimClip)" fill="none" stroke="#FFFFFF" stroke-linecap="round">
+    <!-- Central meridian -->
+    <line x1="512" y1="176" x2="512" y2="848" stroke-width="22"/>
+    <!-- Symmetric inner meridian ellipse -->
+    <ellipse cx="512" cy="512" rx="176" ry="336" stroke-width="22"/>
+    <!-- Equator -->
+    <line x1="176" y1="512" x2="848" y2="512" stroke-width="22"/>
+    <!-- Upper and lower parallels (lat = +/-30 deg) -->
+    <line x1="215" y1="344" x2="809" y2="344" stroke-width="22"/>
+    <line x1="215" y1="680" x2="809" y2="680" stroke-width="22"/>
+  </g>
+
+  <!-- Bold outer rim -->
+  <circle cx="512" cy="512" r="336" fill="none" stroke="#FFFFFF" stroke-width="30"/>
+</svg>

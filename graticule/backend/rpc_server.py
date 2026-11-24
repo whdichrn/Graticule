@@ -28,7 +28,7 @@ import numpy as np
 from .gmt_engine import GMTEngine, PlotConfig
 from .nc_reader import DatasetMeta, NetCDFMetadataReader
 
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.5.0"
 HOVER_GRID_SIZE = 65
 PREVIEW_CACHE_LIMIT = 24
 DATASET_CACHE_LIMIT = 32
@@ -427,7 +427,7 @@ class RPCServer:
             with open(script_path, "w", encoding="utf-8") as stream:
                 stream.write(script)
             env = os.environ.copy()
-            env["PATH"] = os.path.dirname(engine.gmt_bin) + os.pathsep + env.get("PATH", "")
+            env["PATH"] = engine.child_path(env.get("PATH", ""))
             res = subprocess.run(
                 ["bash", script_path],
                 cwd=td,

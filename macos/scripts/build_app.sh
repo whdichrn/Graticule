@@ -98,10 +98,47 @@ stamp_binary "$APP_BUNDLE/Contents/MacOS/Graticule"
 rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' \
     "$REPO_ROOT/graticule/" "$APP_BUNDLE/Contents/Resources/backend/graticule/"
 
-TMP_ICONSET="$(mktemp -d)/AppIcon.iconset"
-swift "$SCRIPT_DIR/make_icon.swift" "$TMP_ICONSET"
-iconutil -c icns "$TMP_ICONSET" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-rm -rf "$(dirname "$TMP_ICONSET")"
+ICON_BUNDLE="$MACOS_DIR/Resources/Graticule.icon"
+ICTOOL_BIN="/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool"
+
+if [[ -d "$ICON_BUNDLE" ]] && xcrun --find actool >/dev/null 2>&1; then
+    TMP_PLIST="$(mktemp)"
+    xcrun actool "$ICON_BUNDLE" \
+        --compile "$APP_BUNDLE/Contents/Resources" \
+        --app-icon Graticule \
+        --include-all-app-icons \
+        --platform macosx \
+        --minimum-deployment-target 13.0 \
+        --output-partial-info-plist "$TMP_PLIST" >/dev/null
+    rm -f "$TMP_PLIST"
+fi
+
+if [[ -f "$APP_BUNDLE/Contents/Resources/Graticule.icns" ]]; then
+    cp "$APP_BUNDLE/Contents/Resources/Graticule.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+elif [[ -d "$ICON_BUNDLE" && -x "$ICTOOL_BIN" ]]; then
+    TMP_ICON_WORK="$(mktemp -d)"
+    "$ICTOOL_BIN" "$ICON_BUNDLE" --export-image --output-file "$TMP_ICON_WORK/base.png" \
+        --platform macOS --rendition Default --width 512 --height 512 --scale 2 --design-generation 27 >/dev/null
+    ICONSET_DIR="$TMP_ICON_WORK/AppIcon.iconset"
+    mkdir -p "$ICONSET_DIR"
+    sips -z 16 16     "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
+    sips -z 32 32     "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_16x16@2x.png" >/dev/null
+    sips -z 32 32     "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_32x32.png" >/dev/null
+    sips -z 64 64     "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_32x32@2x.png" >/dev/null
+    sips -z 128 128   "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_128x128.png" >/dev/null
+    sips -z 256 256   "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null
+    sips -z 256 256   "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_256x256.png" >/dev/null
+    sips -z 512 512   "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null
+    sips -z 512 512   "$TMP_ICON_WORK/base.png" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
+    cp "$TMP_ICON_WORK/base.png" "$ICONSET_DIR/icon_512x512@2x.png"
+    iconutil -c icns "$ICONSET_DIR" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    rm -rf "$TMP_ICON_WORK"
+else
+    TMP_ICONSET="$(mktemp -d)/AppIcon.iconset"
+    swift "$SCRIPT_DIR/make_icon.swift" "$TMP_ICONSET"
+    iconutil -c icns "$TMP_ICONSET" -o "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    rm -rf "$(dirname "$TMP_ICONSET")"
+fi
 
 if [[ -f "$MACOS_DIR/Resources/Credits.rtf" ]]; then
     cp "$MACOS_DIR/Resources/Credits.rtf" "$APP_BUNDLE/Contents/Resources/Credits.rtf"
