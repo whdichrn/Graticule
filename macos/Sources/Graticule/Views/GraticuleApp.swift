@@ -94,11 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !flag {
-            let id = WorkspaceManager.shared.createOrClaimInitialSessionID()
-            WorkspaceManager.shared.openWindowHandler?(id)
-        }
-        return true
+        true
     }
 
     func applicationWillTerminate(_ notification: Notification) {
