@@ -22,8 +22,8 @@ private struct AdaptiveGlassBackground: ViewModifier {
 }
 
 struct PlotCanvasContainerView: View {
-    @Bindable var workspace: WorkspaceManager
-    @Bindable var session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     var body: some View {
         ZStack {
@@ -143,10 +143,10 @@ struct PlotCanvasContainerView: View {
                     Divider()
 
                     if dataset.plotableVariables.isEmpty {
-                        ContentUnavailableView(
+                        AdaptiveEmptyState(
                             "No Regular 2D Grid Variables",
                             systemImage: "info.circle",
-                            description: Text("Inspect variable attributes in the right Info panel.")
+                            description: "Inspect variable attributes in the right Info panel."
                         )
                     } else {
                         Text("Plottable Grid Variables (\(dataset.plotableVariables.count))")
@@ -204,7 +204,7 @@ struct PlotCanvasContainerView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: 660)
-                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(Color.primary.opacity(0.08), lineWidth: 1)
@@ -213,20 +213,20 @@ struct PlotCanvasContainerView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            ContentUnavailableView(
+            AdaptiveEmptyState(
                 "Select a Plottable Grid",
                 systemImage: "map",
-                description: Text("Choose a 2D+ variable from the sidebar to render.")
+                description: "Choose a 2D+ variable from the sidebar to render."
             )
         }
     }
 
     private var emptyStateView: some View {
-        ContentUnavailableView {
-            Label("Open a NetCDF or GMT Grid", systemImage: "globe.asia.australia")
-        } description: {
-            Text("Drop .nc, .nc4, .cdf, .grd, or .h5 files here, or open from Finder.")
-        } actions: {
+        AdaptiveEmptyState(
+            "Open a NetCDF or GMT Grid",
+            systemImage: "globe.asia.australia",
+            description: "Drop .nc, .nc4, .cdf, .grd, or .h5 files here, or open from Finder."
+        ) {
             Button("Open Dataset…") {
                 workspace.openFileDialog(in: session.id)
             }
@@ -390,8 +390,8 @@ struct PlotCanvasContainerView: View {
 }
 
 struct RegionBreadcrumbBar: View {
-    @Bindable var workspace: WorkspaceManager
-    @Bindable var session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     var body: some View {
         HStack(spacing: 8) {

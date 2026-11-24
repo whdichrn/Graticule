@@ -2,12 +2,18 @@ import AppKit
 import SwiftUI
 
 struct SettingsView: View {
-    @Bindable var workspace: WorkspaceManager
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var environment: BackendEnvironment
 
     @State private var associations: [FileAssociationManager.AssociationStatus] = []
     @State private var registrationMessage: String?
     @State private var isRegistering = false
     @State private var isTestingBackend = false
+
+    init(workspace: WorkspaceManager) {
+        self.workspace = workspace
+        self.environment = workspace.environment
+    }
 
     var body: some View {
         TabView {
@@ -36,7 +42,7 @@ struct SettingsView: View {
     private var generalTab: some View {
         Form {
             Section("On Open Dataset") {
-                Picker("Behavior", selection: Bindable(workspace.environment).datasetOpenBehavior) {
+                Picker("Behavior", selection: $environment.datasetOpenBehavior) {
                     ForEach(DatasetOpenBehavior.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
@@ -45,7 +51,7 @@ struct SettingsView: View {
             }
 
             Section("Subregion Selection") {
-                Picker("Box-select default action", selection: Bindable(workspace.environment).boxSelectOpensNewTab) {
+                Picker("Box-select default action", selection: $environment.boxSelectOpensNewTab) {
                     Text("Drill down in current tab (Path Bar)").tag(false)
                     Text("Open in a new native tab").tag(true)
                 }
@@ -56,12 +62,12 @@ struct SettingsView: View {
             }
 
             Section("Preview Quality") {
-                Toggle("Fast LOD preview for large grids (>3M points)", isOn: Bindable(workspace.environment).defaultPreviewLOD)
-                Stepper("Default preview DPI: \(workspace.environment.defaultPreviewDPI)", value: Bindable(workspace.environment).defaultPreviewDPI, in: 72...300, step: 25)
+                Toggle("Fast LOD preview for large grids (>3M points)", isOn: $environment.defaultPreviewLOD)
+                Stepper("Default preview DPI: \(environment.defaultPreviewDPI)", value: $environment.defaultPreviewDPI, in: 72...300, step: 25)
             }
 
             Section("Map Borders") {
-                Toggle("Enable GMT-China CN-border options", isOn: Bindable(workspace.environment).enableCNBorders)
+                Toggle("Enable GMT-China CN-border options", isOn: $environment.enableCNBorders)
                 Text("Show CN-border L1/La choices in Inspector Borders and dataset controls in Environment.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -75,25 +81,25 @@ struct SettingsView: View {
             Section("Runtime Paths (Blank = Auto-Detect)") {
                 pathRow(
                     title: "Python",
-                    placeholder: workspace.environment.resolvedPythonPath ?? "Not found",
-                    text: Bindable(workspace.environment).pythonPathOverride
+                    placeholder: environment.resolvedPythonPath ?? "Not found",
+                    text: $environment.pythonPathOverride
                 )
                 pathRow(
                     title: "GMT 6",
-                    placeholder: workspace.environment.resolvedGMTPath ?? "Auto via Python / PATH",
-                    text: Bindable(workspace.environment).gmtPathOverride
+                    placeholder: environment.resolvedGMTPath ?? "Auto via Python / PATH",
+                    text: $environment.gmtPathOverride
                 )
                 pathRow(
                     title: "Source Root",
-                    placeholder: workspace.environment.resolvedSourceRoot ?? "Not found",
-                    text: Bindable(workspace.environment).sourceRootOverride,
+                    placeholder: environment.resolvedSourceRoot ?? "Not found",
+                    text: $environment.sourceRootOverride,
                     chooseDirectory: true
                 )
-                if workspace.environment.enableCNBorders {
+                if environment.enableCNBorders {
                     pathRow(
                         title: "CN-border",
                         placeholder: workspace.cnBorderStatus?.defaultDir ?? "~/.gmt/china-geospatial-data",
-                        text: Bindable(workspace.environment).cnBorderDirOverride,
+                        text: $environment.cnBorderDirOverride,
                         chooseDirectory: true
                     )
                 }

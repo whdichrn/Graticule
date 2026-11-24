@@ -15,7 +15,7 @@ Native macOS SwiftUI and Python/GMT 6 viewer and publication-grade cartographic 
 
 - **GMT 6** and **Ghostscript** (`gmt`, `gs`) on `PATH` or inside your Python/conda/micromamba environment.
 - **Python 3.9+** with `numpy`, `xarray`, `netCDF4` (plus `PySide6-Essentials` if using the Qt GUI, and `pdftocairo` from Poppler for SVG export).
-- **macOS 14.0+** with Xcode / Swift 6 toolchain to build the native macOS app (`Graticule.app`).
+- **macOS 13.0+ (Ventura and newer)** to run the native macOS app (`Graticule.app`), or Xcode / Swift 6 toolchain to build from source. Prebuilt releases bundle the Python backend inside `Graticule.app/Contents/Resources/backend`.
 
 ## Quick Start
 

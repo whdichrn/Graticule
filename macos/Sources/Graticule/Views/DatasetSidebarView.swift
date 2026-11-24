@@ -2,8 +2,8 @@ import AppKit
 import SwiftUI
 
 struct DatasetSidebarView: View {
-    @Bindable var workspace: WorkspaceManager
-    let session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     @State private var searchText = ""
     @State private var expandedNonGridDatasets: Set<String> = []
@@ -38,11 +38,11 @@ struct DatasetSidebarView: View {
 
             List {
                 if workspace.datasets.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Datasets", systemImage: "doc.badge.plus")
-                    } description: {
-                        Text("Open or drop .nc / .grd files to explore.")
-                    }
+                    AdaptiveEmptyState(
+                        "No Datasets",
+                        systemImage: "doc.badge.plus",
+                        description: "Open or drop .nc / .grd files to explore."
+                    )
                     .listRowSeparator(.hidden)
                 } else {
                     ForEach(workspace.datasets) { dataset in

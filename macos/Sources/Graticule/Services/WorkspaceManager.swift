@@ -1,6 +1,6 @@
 import AppKit
+import Combine
 import Foundation
-import Observation
 import UniformTypeIdentifiers
 
 enum InteractionMode: String, CaseIterable, Sendable {
@@ -9,26 +9,25 @@ enum InteractionMode: String, CaseIterable, Sendable {
 }
 
 @MainActor
-@Observable
-final class PlotSession: Identifiable {
+final class PlotSession: ObservableObject, Identifiable {
     let id: UUID
-    var datasetPath: String?
-    var variableName: String?
-    var config: PlotConfig?
-    var recommendedProjections: [ProjectionOption] = []
-    var regionHistory = RegionHistoryStack()
-    var currentRender: RenderResult?
-    var hoverGrid: HoverGrid?
-    var cursorCoord: (lon: Double, lat: Double)?
-    var zoomScale: Double = 1.0
-    var interactionMode: InteractionMode = .pan
-    var isRendering: Bool = false
-    var isScanningRange: Bool = false
-    var errorMessage: String?
-    var statusText: String = "Ready"
-    var fitRequestToken: Int = 0
-    var actualSizeRequestToken: Int = 0
-    var selectedInspectorTab: InspectorTab = .map
+    @Published var datasetPath: String?
+    @Published var variableName: String?
+    @Published var config: PlotConfig?
+    @Published var recommendedProjections: [ProjectionOption] = []
+    @Published var regionHistory = RegionHistoryStack()
+    @Published var currentRender: RenderResult?
+    @Published var hoverGrid: HoverGrid?
+    @Published var cursorCoord: (lon: Double, lat: Double)?
+    @Published var zoomScale: Double = 1.0
+    @Published var interactionMode: InteractionMode = .pan
+    @Published var isRendering: Bool = false
+    @Published var isScanningRange: Bool = false
+    @Published var errorMessage: String?
+    @Published var statusText: String = "Ready"
+    @Published var fitRequestToken: Int = 0
+    @Published var actualSizeRequestToken: Int = 0
+    @Published var selectedInspectorTab: InspectorTab = .map
     var parentWindowIDForTabbing: ObjectIdentifier?
 
     private var debounceTask: Task<Void, Never>?
@@ -175,28 +174,34 @@ final class PlotSession: Identifiable {
 }
 
 @MainActor
-@Observable
-final class WorkspaceManager {
+final class WorkspaceManager: ObservableObject {
     static let shared = WorkspaceManager()
 
     let environment = BackendEnvironment()
     let rpc = RPCClient()
 
-    var datasets: [DatasetMeta] = []
-    var sessions: [UUID: PlotSession] = [:]
-    var sessionOrder: [UUID] = []
-    var activeSessionID: UUID?
-    var pendingLaunchURLs: [URL] = []
-    var serverInfo: ServerInfo?
-    var backendError: String?
-    var cnBorderStatus: CNBorderStatus?
-    var isDownloadingCNBorder = false
-    var cnBorderError: String?
+    @Published var datasets: [DatasetMeta] = []
+    @Published var sessions: [UUID: PlotSession] = [:]
+    @Published var sessionOrder: [UUID] = []
+    @Published var activeSessionID: UUID?
+    @Published var pendingLaunchURLs: [URL] = []
+    @Published var serverInfo: ServerInfo?
+    @Published var backendError: String?
+    @Published var cnBorderStatus: CNBorderStatus?
+    @Published var isDownloadingCNBorder = false
+    @Published var cnBorderError: String?
 
     var openWindowHandler: ((UUID) -> Void)?
     private var didStartBackend = false
+    private var envCancellable: AnyCancellable?
 
-    private init() {}
+    private init() {
+        envCancellable = environment.objectWillChange.sink { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.objectWillChange.send()
+            }
+        }
+    }
 
     func ensureBackendConfigured() async {
         if didStartBackend { return }

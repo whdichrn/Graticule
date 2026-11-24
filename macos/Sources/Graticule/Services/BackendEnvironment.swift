@@ -1,6 +1,6 @@
 import AppKit
+import Combine
 import Foundation
-import Observation
 import UniformTypeIdentifiers
 
 enum FileAssociationManager {
@@ -82,8 +82,7 @@ enum DatasetOpenBehavior: String, CaseIterable, Identifiable, Sendable {
 }
 
 @MainActor
-@Observable
-final class BackendEnvironment {
+final class BackendEnvironment: ObservableObject {
     private enum Keys {
         static let pythonPath = "Graticule.pythonPath"
         static let gmtPath = "Graticule.gmtPath"
@@ -96,31 +95,31 @@ final class BackendEnvironment {
         static let defaultPreviewDPI = "Graticule.defaultPreviewDPI"
     }
 
-    var pythonPathOverride: String {
+    @Published var pythonPathOverride: String {
         didSet { UserDefaults.standard.set(pythonPathOverride, forKey: Keys.pythonPath) }
     }
-    var gmtPathOverride: String {
+    @Published var gmtPathOverride: String {
         didSet { UserDefaults.standard.set(gmtPathOverride, forKey: Keys.gmtPath) }
     }
-    var sourceRootOverride: String {
+    @Published var sourceRootOverride: String {
         didSet { UserDefaults.standard.set(sourceRootOverride, forKey: Keys.sourceRoot) }
     }
-    var cnBorderDirOverride: String {
+    @Published var cnBorderDirOverride: String {
         didSet { UserDefaults.standard.set(cnBorderDirOverride, forKey: Keys.cnBorderDir) }
     }
-    var enableCNBorders: Bool {
+    @Published var enableCNBorders: Bool {
         didSet { UserDefaults.standard.set(enableCNBorders, forKey: Keys.enableCNBorders) }
     }
-    var boxSelectOpensNewTab: Bool {
+    @Published var boxSelectOpensNewTab: Bool {
         didSet { UserDefaults.standard.set(boxSelectOpensNewTab, forKey: Keys.boxSelectOpensNewTab) }
     }
-    var datasetOpenBehavior: DatasetOpenBehavior {
+    @Published var datasetOpenBehavior: DatasetOpenBehavior {
         didSet { UserDefaults.standard.set(datasetOpenBehavior.rawValue, forKey: Keys.datasetOpenBehavior) }
     }
-    var defaultPreviewLOD: Bool {
+    @Published var defaultPreviewLOD: Bool {
         didSet { UserDefaults.standard.set(defaultPreviewLOD, forKey: Keys.defaultPreviewLOD) }
     }
-    var defaultPreviewDPI: Int {
+    @Published var defaultPreviewDPI: Int {
         didSet { UserDefaults.standard.set(defaultPreviewDPI, forKey: Keys.defaultPreviewDPI) }
     }
 
@@ -253,6 +252,7 @@ final class BackendEnvironment {
             env["GRATICULE_ROOT"] ?? "",
             env["GMT_PANOPLY_ROOT"] ?? "",
             (info["GraticuleSourceRoot"] as? String) ?? "",
+            Bundle.main.resourceURL?.appendingPathComponent("backend").path ?? "",
         ]
         for candidate in explicitCandidates where !candidate.isEmpty && isValidRoot(candidate) {
             return candidate

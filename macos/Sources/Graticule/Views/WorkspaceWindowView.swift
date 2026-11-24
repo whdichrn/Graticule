@@ -6,8 +6,8 @@ struct WorkspaceWindowView: View {
     @Environment(\.openWindow) private var openWindow
 
     let sessionID: UUID
-    @Bindable var workspace: WorkspaceManager
-    @Bindable var session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var showInspector = true
@@ -27,9 +27,8 @@ struct WorkspaceWindowView: View {
         } detail: {
             PlotCanvasContainerView(workspace: workspace, session: session)
         }
-        .inspector(isPresented: $showInspector) {
+        .adaptiveInspector(isPresented: $showInspector) {
             PlotInspectorView(workspace: workspace, session: session)
-                .inspectorColumnWidth(min: 265, ideal: 295, max: 360)
         }
         .navigationTitle(windowTitle)
         .navigationSubtitle(windowSubtitle)

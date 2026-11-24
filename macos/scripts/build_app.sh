@@ -9,10 +9,14 @@ APP_BUNDLE="$DIST_DIR/Graticule.app"
 
 INSTALL_APP=false
 SET_DEFAULT=false
+PORTABLE=false
+UNIVERSAL=false
 for arg in "$@"; do
     case "$arg" in
         --install) INSTALL_APP=true ;;
         --set-default) SET_DEFAULT=true ;;
+        --portable) PORTABLE=true ;;
+        --universal) UNIVERSAL=true ;;
         *) echo "Unknown option: $arg" >&2; exit 1 ;;
     esac
 done
@@ -40,9 +44,22 @@ elif [[ -z "$GMT_BIN_PATH" ]]; then
 fi
 
 echo "== Building Graticule (release)"
-swift build -c release --package-path "$MACOS_DIR"
-BIN_DIR="$(swift build -c release --package-path "$MACOS_DIR" --show-bin-path)"
-BIN_PATH="$BIN_DIR/Graticule"
+BIN_PATH=""
+if [[ "$UNIVERSAL" == true ]]; then
+    if swift build -c release --arch arm64 --arch x86_64 --package-path "$MACOS_DIR"; then
+        BIN_DIR="$(swift build -c release --arch arm64 --arch x86_64 --package-path "$MACOS_DIR" --show-bin-path)"
+        BIN_PATH="$BIN_DIR/Graticule"
+    else
+        echo "Notice: Universal (arm64 + x86_64) build unavailable on this toolchain; falling back to arm64." >&2
+    fi
+fi
+
+if [[ -z "$BIN_PATH" || ! -x "$BIN_PATH" ]]; then
+    swift build -c release --package-path "$MACOS_DIR"
+    BIN_DIR="$(swift build -c release --package-path "$MACOS_DIR" --show-bin-path)"
+    BIN_PATH="$BIN_DIR/Graticule"
+fi
+
 if [[ ! -x "$BIN_PATH" ]]; then
     echo "Release binary missing: $BIN_PATH" >&2
     exit 1
@@ -51,10 +68,35 @@ fi
 echo "== Packaging $APP_BUNDLE"
 SDK_VERSION="$(xcrun --show-sdk-version)"
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources/backend/graticule"
+
+stamp_binary() {
+    local target="$1"
+    local arches
+    arches="$(lipo -archs "$target" 2>/dev/null || true)"
+    if [[ "$arches" == *" "* ]]; then
+        local tmpdir
+        tmpdir="$(mktemp -d)"
+        local slices=()
+        for arch in $arches; do
+            local slice="$tmpdir/Graticule.$arch"
+            lipo "$target" -thin "$arch" -output "$slice"
+            xcrun vtool -set-build-version macos 13.0 "$SDK_VERSION" -replace -output "$slice" "$slice"
+            slices+=("$slice")
+        done
+        lipo -create "${slices[@]}" -output "$target"
+        rm -rf "$tmpdir"
+    else
+        xcrun vtool -set-build-version macos 13.0 "$SDK_VERSION" -replace -output "$target" "$target"
+    fi
+}
+
 cp "$BIN_PATH" "$APP_BUNDLE/Contents/MacOS/Graticule"
-xcrun vtool -set-build-version macos 14.0 "$SDK_VERSION" -replace \
-    -output "$APP_BUNDLE/Contents/MacOS/Graticule" "$APP_BUNDLE/Contents/MacOS/Graticule"
+stamp_binary "$APP_BUNDLE/Contents/MacOS/Graticule"
+
+# Bundle Python backend inside the .app so portable releases run without cloning the repo
+rsync -a --exclude '__pycache__' --exclude '*.pyc' --exclude '.DS_Store' \
+    "$REPO_ROOT/graticule/" "$APP_BUNDLE/Contents/Resources/backend/graticule/"
 
 TMP_ICONSET="$(mktemp -d)/AppIcon.iconset"
 swift "$SCRIPT_DIR/make_icon.swift" "$TMP_ICONSET"
@@ -65,7 +107,16 @@ if [[ -f "$MACOS_DIR/Resources/Credits.rtf" ]]; then
     cp "$MACOS_DIR/Resources/Credits.rtf" "$APP_BUNDLE/Contents/Resources/Credits.rtf"
 fi
 
-"$PYTHON_BIN" -B - "$MACOS_DIR/Resources/Info.plist.template" "$APP_BUNDLE/Contents/Info.plist" "$REPO_ROOT" "$PYTHON_BIN" "$GMT_BIN_PATH" "$SDK_VERSION" <<'PY'
+INFO_ROOT="$REPO_ROOT"
+INFO_PY="$PYTHON_BIN"
+INFO_GMT="$GMT_BIN_PATH"
+if [[ "$PORTABLE" == true ]]; then
+    INFO_ROOT=""
+    INFO_PY=""
+    INFO_GMT=""
+fi
+
+"$PYTHON_BIN" -B - "$MACOS_DIR/Resources/Info.plist.template" "$APP_BUNDLE/Contents/Info.plist" "$INFO_ROOT" "$INFO_PY" "$INFO_GMT" "$SDK_VERSION" <<'PY'
 import sys
 from pathlib import Path
 

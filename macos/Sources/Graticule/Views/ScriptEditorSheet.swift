@@ -4,8 +4,8 @@ import SwiftUI
 struct ScriptEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @Bindable var workspace: WorkspaceManager
-    @Bindable var session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     @State private var scriptText: String = ""
     @State private var isLoading = true

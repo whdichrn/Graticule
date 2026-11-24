@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct PlotInspectorView: View {
-    @Bindable var workspace: WorkspaceManager
-    @Bindable var session: PlotSession
+    @ObservedObject var workspace: WorkspaceManager
+    @ObservedObject var session: PlotSession
 
     @State private var advancedExpanded = false
     @State private var customProjectionText = ""
@@ -31,19 +31,19 @@ struct PlotInspectorView: View {
                     infoInspectorForm
                 }
             } else {
-                ContentUnavailableView(
+                AdaptiveEmptyState(
                     "No Active Plot",
                     systemImage: "slider.horizontal.3",
-                    description: Text("Select a variable to configure map and color options.")
+                    description: "Select a variable to configure map and color options."
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: session.config?.projection) { _, newValue in
+        .onChange(of: session.config?.projection) { newValue in
             customProjectionText = newValue ?? ""
         }
-        .onChange(of: session.config?.cpt) { _, newValue in
+        .onChange(of: session.config?.cpt) { newValue in
             customCptText = newValue ?? ""
         }
         .onAppear {
@@ -527,10 +527,10 @@ struct PlotInspectorView: View {
         let variable = workspace.variable(named: session.variableName, inDataset: session.datasetPath)
 
         if dataset == nil && variable == nil {
-            ContentUnavailableView(
+            AdaptiveEmptyState(
                 "No Metadata",
                 systemImage: "info.circle",
-                description: Text("Open a dataset to inspect its dimensions and attributes.")
+                description: "Open a dataset to inspect its dimensions and attributes."
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
