@@ -257,30 +257,6 @@ def run_headless_plot(args, meta: DatasetMeta, engine: GMTEngine) -> int:
         return 1
 
 
-def launch_gui(file_path: Optional[str] = None, variable_name: Optional[str] = None) -> int:
-    """Launches the PySide6 Graphical User Interface."""
-    from PySide6 import QtCore, QtWidgets
-
-    if hasattr(QtCore.Qt.ApplicationAttribute, "AA_EnableHighDpiScaling"):
-        QtWidgets.QApplication.setAttribute(QtCore.Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
-    if hasattr(QtCore.Qt.ApplicationAttribute, "AA_UseHighDpiPixmaps"):
-        QtWidgets.QApplication.setAttribute(QtCore.Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
-
-    app = QtWidgets.QApplication(sys.argv)
-    app.setApplicationName("Graticule")
-    app.setOrganizationName("Graticule")
-
-    from .ui.main_window import MainWindow
-    window = MainWindow()
-    window.show()
-
-    paths = [file_path] if isinstance(file_path, str) else file_path or []
-    for path in paths:
-        if os.path.exists(path): window.open_file(path, variable_name)
-
-    return app.exec()
-
-
 def build_parser() -> argparse.ArgumentParser:
     """Constructs the argument parser for the CLI."""
     parser = argparse.ArgumentParser(
@@ -289,12 +265,8 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Launch interactive GUI:
-  graticule
-  graticule dataset.nc
-  graticule dataset.nc -v Txx
-
   # Inspect NetCDF dataset structure headlessly:
+  graticule dataset.nc
   graticule dataset.nc -i
 
   # Render high-resolution PNG image headlessly:
@@ -356,7 +328,6 @@ Examples:
     parser.add_argument("--makecpt-args", default="", help="Extra makecpt module arguments")
     parser.add_argument("--coast-args", default="", help="Extra coast module arguments")
     parser.add_argument("--colorbar-args", default="", help="Extra colorbar module arguments")
-    parser.add_argument("--gui", action="store_true", help="Force launch GUI even if file is specified")
 
     return parser
 
@@ -387,9 +358,10 @@ def main() -> int:
     headless = args.output or args.info or args.script_only
     if not args.file:
         if headless: parser.error("Headless operations require at least one dataset.")
-        return launch_gui()
-    if not headless or args.gui:
-        return launch_gui(args.file, args.variable)
+        parser.print_help()
+        return 0
+    if not headless:
+        args.info = True
     if len(args.file) > 1 and not args.info:
         if not args.output or Path(args.output).suffix:
             parser.error("For multiple datasets, --output must be a directory (for example --output results/).")

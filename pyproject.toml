@@ -27,8 +27,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-qt = ["PySide6-Essentials>=6.5.0"]
-dev = ["pytest>=7", "Pillow>=10", "PySide6-Essentials>=6.5.0"]
+dev = ["pytest>=7", "Pillow>=10"]
 
 [project.scripts]
 graticule = "graticule.cli:main"

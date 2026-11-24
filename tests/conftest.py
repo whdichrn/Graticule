@@ -1,14 +1,7 @@
-import os
-os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 import numpy as np
 import pytest
 import xarray as xr
-from PySide6 import QtWidgets
 from graticule.backend.gmt_engine import GMTEngine
-
-@pytest.fixture(scope='session')
-def app():
-    return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 @pytest.fixture(scope='session')
 def engine():

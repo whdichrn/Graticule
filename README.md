@@ -9,12 +9,12 @@ Native macOS SwiftUI and Python/GMT 6 viewer and publication-grade cartographic 
 - **Interactive Subregion & Polar Presets**: Box-select geographic subregions (drill down in-tab with the Path Bar or open in a new native tab with `⌥`-drag) and jump to Arctic/Antarctic stereographic presets.
 - **Reproducible GMT 6 Modern Mode Workflow**: Inspect, edit, synchronize, or export standalone `gmt` bash scripts at any time.
 - **Optional GMT-China CN-Border Support**: Disabled by default; can be enabled in **Settings (`⌘,`) → General → Map Borders** with native `URLSession` download or offline ZIP import.
-- **Headless CLI & Cross-Platform Qt Fallback**: Batch render maps, inspect variables, and generate standalone GMT scripts from the terminal or via the PySide6 desktop GUI.
+- **Headless CLI**: Batch render maps, inspect variables, and generate standalone GMT scripts directly from the terminal.
 
 ## Requirements
 
 - **GMT 6** and **Ghostscript** (`gmt`, `gs`) on `PATH` or inside your Python/conda/micromamba environment.
-- **Python 3.9+** with `numpy`, `xarray`, `netCDF4` (plus `PySide6-Essentials` if using the Qt GUI, and `pdftocairo` from Poppler for SVG export).
+- **Python 3.9+** with `numpy`, `xarray`, `netCDF4` (and `pdftocairo` from Poppler for optional SVG export).
 - **macOS 13.0+ (Ventura and newer)** to run the native macOS app (`Graticule.app`), or Xcode / Swift 6 toolchain to build from source. Prebuilt releases bundle the Python backend inside `Graticule.app/Contents/Resources/backend`.
 
 ## Quick Start
@@ -25,7 +25,7 @@ Native macOS SwiftUI and Python/GMT 6 viewer and publication-grade cartographic 
 python -m pip install -e .
 ```
 
-Use the CLI or legacy Qt UI:
+Use the CLI:
 
 ```bash
 # Print dataset metadata and variable list
@@ -58,8 +58,8 @@ Environment overrides (optional, configurable in **Settings → Environment**):
 ## Running Tests
 
 ```bash
-# Python backend, CLI, metadata, RPC server, and Qt tests
-QT_QPA_PLATFORM=offscreen python -m pytest -q tests
+# Python backend, CLI, metadata, and RPC server tests
+python -m pytest -q tests
 
 # Swift package & live RPC integration tests
 swift test --package-path macos
