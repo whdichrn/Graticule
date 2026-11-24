@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "graticule"
+version = "0.4.0"
+description = "Native macOS SwiftUI and Python/GMT 6 viewer and cartographic plotter for NetCDF, HDF, and GMT grids."
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "whdichrn", email = "jzhentao@whu.edu.cn"}
+]
+requires-python = ">=3.9"
+keywords = ["netcdf", "hdf5", "gmt", "cartography", "geoscience", "macos", "swiftui"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = [
+    "numpy",
+    "xarray",
+    "netCDF4",
+]
+
+[project.optional-dependencies]
+qt = ["PySide6-Essentials>=6.5.0"]
+dev = ["pytest>=7", "Pillow>=10", "PySide6-Essentials>=6.5.0"]
+
+[project.scripts]
+graticule = "graticule.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["graticule*"]

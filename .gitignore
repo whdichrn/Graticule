@@ -1,0 +1,21 @@
+# macOS / Finder
+.DS_Store
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/
+
+# Swift / macOS bundle build outputs
+macos/.build/
+macos/dist/
+
+# GMT working artifacts
+gmt.history
+gmt.conf
