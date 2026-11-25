@@ -27,12 +27,14 @@ struct ServerInfo: Codable, Sendable, Equatable {
     let version: String
     let gmtVersion: String
     let gmtBin: String
+    let gsBin: String?
     let python: String
 
     enum CodingKeys: String, CodingKey {
         case version
         case gmtVersion = "gmt_version"
         case gmtBin = "gmt_bin"
+        case gsBin = "gs_bin"
         case python
     }
 }
@@ -77,6 +79,9 @@ struct VarMeta: Codable, Sendable, Equatable, Identifiable {
     let xRange: [Double]?
     let yRange: [Double]?
     let vRange: [Double]?
+    let flagValues: [Double]
+    let flagMeanings: [String]
+    let isCategorical: Bool
     let defaultCpt: String
     let defaultSymmetric: Bool
 
@@ -110,8 +115,35 @@ struct VarMeta: Codable, Sendable, Equatable, Identifiable {
         case xRange = "x_range"
         case yRange = "y_range"
         case vRange = "v_range"
+        case flagValues = "flag_values"
+        case flagMeanings = "flag_meanings"
+        case isCategorical = "is_categorical"
         case defaultCpt = "default_cpt"
         case defaultSymmetric = "default_symmetric"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        displayTitle = try c.decode(String.self, forKey: .displayTitle)
+        dimensions = try c.decode([String].self, forKey: .dimensions)
+        shape = try c.decode([Int].self, forKey: .shape)
+        dtype = try c.decode(String.self, forKey: .dtype)
+        attrs = try c.decode([KeyValueAttr].self, forKey: .attrs)
+        is2DPlotable = try c.decode(Bool.self, forKey: .is2DPlotable)
+        xDim = try c.decodeIfPresent(String.self, forKey: .xDim)
+        yDim = try c.decodeIfPresent(String.self, forKey: .yDim)
+        sliceDims = try c.decode([String].self, forKey: .sliceDims)
+        isGeographic = try c.decode(Bool.self, forKey: .isGeographic)
+        unsupportedReason = try c.decode(String.self, forKey: .unsupportedReason)
+        xRange = try c.decodeIfPresent([Double].self, forKey: .xRange)
+        yRange = try c.decodeIfPresent([Double].self, forKey: .yRange)
+        vRange = try c.decodeIfPresent([Double].self, forKey: .vRange)
+        flagValues = try c.decodeIfPresent([Double].self, forKey: .flagValues) ?? []
+        flagMeanings = try c.decodeIfPresent([String].self, forKey: .flagMeanings) ?? []
+        isCategorical = try c.decodeIfPresent(Bool.self, forKey: .isCategorical) ?? false
+        defaultCpt = try c.decode(String.self, forKey: .defaultCpt)
+        defaultSymmetric = try c.decode(Bool.self, forKey: .defaultSymmetric)
     }
 }
 
@@ -185,6 +217,9 @@ struct PlotConfig: Codable, Sendable, Equatable {
     var labelSize: Double = 11.0
     var symmetricCpt: Bool = false
     var cptLevels: Int = 16
+    var cptCategorical: Bool = false
+    var flagValues: [Double] = []
+    var flagMeanings: [String] = []
     var coastResolution: String = "l"
     var coastPen: String = "0.4p,gray25"
     var interpolation: String = "c"
@@ -231,6 +266,9 @@ struct PlotConfig: Codable, Sendable, Equatable {
         case labelSize = "label_size"
         case symmetricCpt = "symmetric_cpt"
         case cptLevels = "cpt_levels"
+        case cptCategorical = "cpt_categorical"
+        case flagValues = "flag_values"
+        case flagMeanings = "flag_meanings"
         case coastResolution = "coast_resolution"
         case coastPen = "coast_pen"
         case interpolation
@@ -285,6 +323,7 @@ struct PlotConfig: Codable, Sendable, Equatable {
             projection: recommendedProjection ?? (variable.isGeographic ? "Q16c" : "X16c/10c"),
             cpt: variable.defaultCpt,
             cptRange: nil,
+            cptContinuous: !variable.isCategorical,
             colorbarTitle: variable.units,
             dpi: previewDPI,
             title: variable.displayTitle,
@@ -295,6 +334,10 @@ struct PlotConfig: Codable, Sendable, Equatable {
             variableDescription: desc,
             sliceIndices: slices,
             symmetricCpt: variable.defaultSymmetric,
+            cptCategorical: variable.isCategorical,
+            flagValues: variable.flagValues,
+            flagMeanings: variable.flagMeanings,
+            interpolation: variable.isCategorical ? "n" : "c",
             preview: previewLOD
         )
     }
@@ -411,15 +454,17 @@ struct HoverGrid: Sendable, Equatable {
 
 enum GMTColorPalettes {
     static let builtInNames: [String] = [
-        "turbo", "rainbow", "seis", "polar", "jet",
-        "vik", "roma", "batlow", "viridis", "plasma",
-        "coolwarm", "relief", "topo", "ocean", "magma",
-        "inferno", "gray"
+        "panoply", "turbo", "rainbow", "seis", "polar",
+        "jet", "vik", "roma", "batlow", "viridis",
+        "plasma", "magma", "inferno", "relief", "topo",
+        "ocean", "gray", "categorical"
     ]
 
     static func gradient(for name: String) -> LinearGradient {
         let stops: [Color]
         switch name.lowercased() {
+        case "panoply":
+            stops = [Color(red: 0.03, green: 0.14, blue: 0.65), .blue, .cyan, .green, .yellow, .orange, .red]
         case "turbo":
             stops = [Color(red: 0.19, green: 0.07, blue: 0.23), .blue, .cyan, .green, .yellow, .orange, .red]
         case "rainbow":
@@ -440,8 +485,6 @@ enum GMTColorPalettes {
             stops = [Color(red: 0.27, green: 0.0, blue: 0.33), Color(red: 0.19, green: 0.41, blue: 0.56), Color(red: 0.21, green: 0.72, blue: 0.47), Color(red: 0.99, green: 0.91, blue: 0.15)]
         case "plasma":
             stops = [Color(red: 0.05, green: 0.03, blue: 0.53), Color(red: 0.49, green: 0.01, blue: 0.66), Color(red: 0.8, green: 0.28, blue: 0.47), Color(red: 0.97, green: 0.58, blue: 0.25), Color(red: 0.94, green: 0.98, blue: 0.13)]
-        case "coolwarm":
-            stops = [Color(red: 0.23, green: 0.3, blue: 0.75), Color(red: 0.67, green: 0.78, blue: 0.98), Color(red: 0.87, green: 0.87, blue: 0.87), Color(red: 0.96, green: 0.64, blue: 0.52), Color(red: 0.71, green: 0.02, blue: 0.15)]
         case "relief", "topo":
             stops = [Color(red: 0.05, green: 0.22, blue: 0.55), Color(red: 0.25, green: 0.62, blue: 0.85), Color(red: 0.2, green: 0.62, blue: 0.3), Color(red: 0.85, green: 0.75, blue: 0.45), .white]
         case "ocean":
@@ -452,9 +495,83 @@ enum GMTColorPalettes {
             stops = [.black, Color(red: 0.34, green: 0.06, blue: 0.43), Color(red: 0.73, green: 0.21, blue: 0.33), Color(red: 0.98, green: 0.55, blue: 0.04), Color(red: 0.99, green: 1.0, blue: 0.64)]
         case "gray":
             stops = [.black, .gray, .white]
+        case "categorical":
+            stops = [
+                Color(red: 0.12, green: 0.47, blue: 0.71),
+                Color(red: 1.00, green: 0.50, blue: 0.05),
+                Color(red: 0.17, green: 0.63, blue: 0.17),
+                Color(red: 0.84, green: 0.15, blue: 0.16),
+                Color(red: 0.58, green: 0.40, blue: 0.74),
+                Color(red: 0.09, green: 0.75, blue: 0.81),
+            ]
         default:
             stops = [.indigo, .blue, .teal, .orange, .red]
         }
         return LinearGradient(colors: stops, startPoint: .leading, endPoint: .trailing)
+    }
+}
+
+enum ProjectionCenterHelper {
+    private static let singlePrefixes: Set<Character> = [
+        "W", "R", "H", "N", "I", "Q", "M", "G", "A", "S", "T", "E", "F", "C", "L", "B"
+    ]
+
+    private static func splitPrefixAndBody(_ code: String) -> (prefix: String, body: String)? {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "IntMollOcean" else { return nil }
+        let upper = trimmed.uppercased()
+        if upper.hasPrefix("KF") || upper.hasPrefix("KS") {
+            return (String(trimmed.prefix(2)), String(trimmed.dropFirst(2)))
+        }
+        if let first = upper.first, first != "X", singlePrefixes.contains(first) {
+            return (String(trimmed.prefix(1)), String(trimmed.dropFirst(1)))
+        }
+        return nil
+    }
+
+    static func supportsCentralMeridian(_ code: String) -> Bool {
+        splitPrefixAndBody(code) != nil
+    }
+
+    static func extractCentralMeridian(from code: String) -> Double? {
+        guard let (_, body) = splitPrefixAndBody(code) else { return nil }
+        let parts = body.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count >= 2 else { return nil }
+        return Double(parts[0])
+    }
+
+    static func formattedCentralMeridian(from code: String) -> String {
+        guard let lon0 = extractCentralMeridian(from: code) else { return "" }
+        if abs(lon0 - lon0.rounded()) < 1e-6 {
+            return String(Int(lon0.rounded()))
+        }
+        return String(format: "%.4g", lon0)
+    }
+
+    static func applyingCentralMeridian(_ lon0: Double, to code: String) -> String {
+        guard let (prefix, body) = splitPrefixAndBody(code) else { return code }
+        let lonStr = abs(lon0 - lon0.rounded()) < 1e-6 ? String(Int(lon0.rounded())) : String(format: "%.6g", lon0)
+        var parts = body.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !parts.isEmpty else { return code }
+        if parts.count == 1 {
+            return "\(prefix)\(lonStr)/\(parts[0])"
+        }
+        parts[0] = lonStr
+        return prefix + parts.joined(separator: "/")
+    }
+
+    static func shiftedGlobalRegion(_ region: [Double]?, lon0: Double) -> [Double]? {
+        guard let region, region.count == 4, (region[1] - region[0]) >= 359.0 else {
+            return region
+        }
+        let s = region[2]
+        let n = region[3]
+        if abs(lon0) < 1e-6 {
+            return [-180.0, 180.0, s, n]
+        }
+        if abs(abs(lon0) - 180.0) < 1e-6 {
+            return [0.0, 360.0, s, n]
+        }
+        return [lon0 - 180.0, lon0 + 180.0, s, n]
     }
 }

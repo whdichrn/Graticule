@@ -1,4 +1,4 @@
 """
 Graticule: A high-performance NetCDF viewer and plotter powered by GMT 6.
 """
-__version__ = "0.5.0"
+__version__ = "0.6.0"

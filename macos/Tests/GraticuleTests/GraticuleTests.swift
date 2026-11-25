@@ -154,7 +154,7 @@ final class GraticuleTests: XCTestCase {
         await client.configure(pythonPath: python, gmtPath: gmt, sourceRoot: root)
 
         let info = try await client.ping()
-        XCTAssertEqual(info.version, "0.5.0")
+        XCTAssertEqual(info.version, "0.6.0")
         XCTAssertFalse(info.gmtVersion.isEmpty)
 
         let ds = try await client.openDataset(path: tempNC.path)
@@ -174,5 +174,32 @@ final class GraticuleTests: XCTestCase {
         XCTAssertEqual(mid!.lat, 25.0, accuracy: 2.0)
 
         await client.shutdown()
+    }
+
+    func testProjectionCenterMeridianAndCartesianLabels() {
+        XCTAssertTrue(ProjectionCenterHelper.supportsCentralMeridian("R0/16c"))
+        XCTAssertTrue(ProjectionCenterHelper.supportsCentralMeridian("Q16c"))
+        XCTAssertFalse(ProjectionCenterHelper.supportsCentralMeridian("X16c/10c"))
+        XCTAssertFalse(ProjectionCenterHelper.supportsCentralMeridian("IntMollOcean"))
+
+        XCTAssertEqual(ProjectionCenterHelper.extractCentralMeridian(from: "W0/16c"), 0.0)
+        XCTAssertEqual(ProjectionCenterHelper.extractCentralMeridian(from: "S180/90/15c"), 180.0)
+        XCTAssertNil(ProjectionCenterHelper.extractCentralMeridian(from: "Q16c"))
+
+        XCTAssertEqual(ProjectionCenterHelper.applyingCentralMeridian(180.0, to: "R0/16c"), "R180/16c")
+        XCTAssertEqual(ProjectionCenterHelper.applyingCentralMeridian(180.0, to: "Q16c"), "Q180/16c")
+        XCTAssertEqual(ProjectionCenterHelper.applyingCentralMeridian(0.0, to: "Kf180/16c"), "Kf0/16c")
+        XCTAssertEqual(ProjectionCenterHelper.applyingCentralMeridian(180.0, to: "S0/90/15c"), "S180/90/15c")
+
+        let shifted = ProjectionCenterHelper.shiftedGlobalRegion([-180.0, 180.0, -90.0, 90.0], lon0: 180.0)
+        XCTAssertEqual(shifted, [0.0, 360.0, -90.0, 90.0])
+
+        XCTAssertEqual(
+            RegionEntry.formatRegionLabel([0.0, 1415.0, 0.0, 959.0], isGeographic: false),
+            "X 0–1415, Y 0–959"
+        )
+        XCTAssertTrue(GMTColorPalettes.builtInNames.contains("panoply"))
+        XCTAssertTrue(GMTColorPalettes.builtInNames.contains("categorical"))
+        XCTAssertFalse(GMTColorPalettes.builtInNames.contains("coolwarm"))
     }
 }

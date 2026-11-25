@@ -157,6 +157,52 @@ final class BackendEnvironment: ObservableObject {
         Self.detectSourceRoot(override: sourceRootOverride)
     }
 
+    var resolvedGhostscriptPath: String? {
+        Self.detectGhostscriptPath(gmtPath: resolvedGMTPath, pythonPath: resolvedPythonPath)
+    }
+
+    nonisolated static func detectGhostscriptPath(gmtPath: String? = nil, pythonPath: String? = nil) -> String? {
+        let fm = FileManager.default
+        let env = ProcessInfo.processInfo.environment
+        var candidates: [String] = []
+
+        if let gmtPath, !gmtPath.isEmpty {
+            let gmtURL = URL(fileURLWithPath: gmtPath)
+            candidates.append(gmtURL.deletingLastPathComponent().appendingPathComponent("gs").path)
+            // MacPorts layout: /opt/local/lib/gmt6/bin/gmt -> /opt/local/bin/gs
+            var cursor = gmtURL.deletingLastPathComponent()
+            for _ in 0..<5 {
+                if cursor.lastPathComponent.hasPrefix("gmt"),
+                   cursor.deletingLastPathComponent().lastPathComponent == "lib" {
+                    candidates.append(cursor.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("bin/gs").path)
+                    break
+                }
+                let parent = cursor.deletingLastPathComponent()
+                if parent.path == cursor.path { break }
+                cursor = parent
+            }
+        }
+        if let pythonPath, !pythonPath.isEmpty {
+            candidates.append(URL(fileURLWithPath: pythonPath).deletingLastPathComponent().appendingPathComponent("gs").path)
+        }
+        candidates.append(contentsOf: [
+            "/opt/local/bin/gs",
+            "/opt/homebrew/bin/gs",
+            "/usr/local/bin/gs",
+            "/usr/bin/gs",
+        ])
+        if let pathEnv = env["PATH"] {
+            for dir in pathEnv.split(separator: ":") {
+                candidates.append(URL(fileURLWithPath: String(dir)).appendingPathComponent("gs").path)
+            }
+        }
+
+        for path in candidates where fm.isExecutableFile(atPath: path) {
+            return path
+        }
+        return nil
+    }
+
     nonisolated static func detectPythonPath(override: String = "") -> String? {
         let fm = FileManager.default
         let home = fm.homeDirectoryForCurrentUser.path

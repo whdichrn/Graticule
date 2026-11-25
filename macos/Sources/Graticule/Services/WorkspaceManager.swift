@@ -243,7 +243,7 @@ final class WorkspaceManager: ObservableObject {
         do {
             let dest = environment.cnBorderDirOverride.trimmingCharacters(in: .whitespacesAndNewlines)
             var zipURL = URL(string: "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip")!
-            let userAgent = "Graticule/0.5.0"
+            let userAgent = "Graticule/0.6.0"
 
             var apiReq = URLRequest(url: URL(string: "https://api.github.com/repos/gmt-china/china-geospatial-data/releases/latest")!)
             apiReq.timeoutInterval = 20
@@ -604,7 +604,7 @@ final class WorkspaceManager: ObservableObject {
             }
         }
 
-        let entryLabel = label ?? RegionEntry.formatRegionLabel(region)
+        let entryLabel = label ?? RegionEntry.formatRegionLabel(region, isGeographic: baseConfig.isGeographic)
         let titleBase = varMeta?.displayTitle ?? baseConfig.variableName
         let nextTitle = "\(titleBase) [\(entryLabel)]"
 

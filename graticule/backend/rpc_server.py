@@ -28,7 +28,7 @@ import numpy as np
 from .gmt_engine import GMTEngine, PlotConfig
 from .nc_reader import DatasetMeta, NetCDFMetadataReader
 
-SERVER_VERSION = "0.5.0"
+SERVER_VERSION = "0.6.0"
 HOVER_GRID_SIZE = 65
 PREVIEW_CACHE_LIMIT = 24
 DATASET_CACHE_LIMIT = 32
@@ -111,6 +111,9 @@ def _plot_config_from_dict(data: Dict[str, Any], meta: Optional[DatasetMeta] = N
         label_size=float(raw.get("label_size", 11.0)),
         symmetric_cpt=bool(raw.get("symmetric_cpt", False)),
         cpt_levels=int(raw.get("cpt_levels", 16)),
+        cpt_categorical=bool(raw.get("cpt_categorical", False)),
+        flag_values=tuple(float(x) for x in (raw.get("flag_values") or ())),
+        flag_meanings=tuple(str(x) for x in (raw.get("flag_meanings") or ())),
         coast_resolution=str(raw.get("coast_resolution", "l")),
         coast_pen=str(raw.get("coast_pen", "0.4p,gray25")),
         interpolation=str(raw.get("interpolation", "c")),
@@ -212,6 +215,7 @@ class RPCServer:
             "version": SERVER_VERSION,
             "gmt_version": engine.get_version(),
             "gmt_bin": engine.gmt_bin,
+            "gs_bin": shutil.which("gs", path=engine.child_path()),
             "python": sys.executable,
         }
 
@@ -223,6 +227,9 @@ class RPCServer:
         variables = []
         for var in meta.variables.values():
             default_cpt, default_sym = GMTEngine.default_style_for_variable(var.name)
+            if var.is_categorical:
+                default_cpt = "categorical"
+                default_sym = False
             variables.append({
                 "name": var.name,
                 "display_title": var.display_title,
@@ -239,6 +246,9 @@ class RPCServer:
                 "x_range": _to_json_safe(list(var.x_range)) if var.x_range else None,
                 "y_range": _to_json_safe(list(var.y_range)) if var.y_range else None,
                 "v_range": _to_json_safe(list(var.v_range)) if var.v_range else None,
+                "flag_values": _to_json_safe(list(var.flag_values)),
+                "flag_meanings": list(var.flag_meanings),
+                "is_categorical": bool(var.is_categorical),
                 "default_cpt": default_cpt,
                 "default_symmetric": default_sym,
             })

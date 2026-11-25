@@ -64,6 +64,9 @@ class PlotConfig:
     label_size: float = 11.0
     symmetric_cpt: bool = False
     cpt_levels: int = 16
+    cpt_categorical: bool = False
+    flag_values: Tuple[float, ...] = ()
+    flag_meanings: Tuple[str, ...] = ()
     coast_resolution: str = "l"
     coast_pen: str = "0.4p,gray25"
     interpolation: str = "c"
@@ -79,6 +82,8 @@ class PlotConfig:
     def __post_init__(self):
         if self.region is not None: self.region = tuple(self.region)
         if self.cpt_range is not None: self.cpt_range = tuple(self.cpt_range)
+        self.flag_values = tuple(float(x) for x in (self.flag_values or ()))
+        self.flag_meanings = tuple(str(x) for x in (self.flag_meanings or ()))
         self.slice_indices = dict(self.slice_indices)
         if self.show_borders and self.border_mode == "none":
             self.border_mode = "gmt_global"
@@ -144,23 +149,51 @@ class GMTEngine:
 
     # Scientific and geophysical GMT color palettes
     CPT_OPTIONS = [
-        "rainbow",    # Classic Rainbow (Panoply default)
+        "panoply",    # Classic NASA Panoply rainbow (GMT built-in)
+        "turbo",      # Google Turbo smoothed rainbow
+        "rainbow",    # Classic GMT rainbow
         "seis",       # Seismic red-white-blue diverging
         "polar",      # Blue-white-red diverging
-        "jet",        # Classic Jet
-        "turbo",      # Google Turbo smoothed rainbow
         "vik",        # Crameri perceptually uniform diverging
         "roma",       # Crameri diverging
         "batlow",     # Crameri modern geoscientific standard
         "viridis",    # Perceptually uniform sequential
         "plasma",     # Warm sequential
-        "coolwarm",   # Blue to red diverging
+        "magma",      # Magma sequential
+        "inferno",    # Inferno sequential
+        "jet",        # Classic Jet
         "relief",     # Shaded relief topography
         "topo",       # Sandwell/Smith land/sea topography
         "ocean",      # Ocean bathymetry
-        "magma",      # Magma sequential
-        "inferno",    # Inferno sequential
         "gray",       # Grayscale
+        "categorical", # Discrete qualitative palette for flag/class grids
+    ]
+
+    CATEGORICAL_RGB = [
+        (31, 119, 180),
+        (255, 127, 14),
+        (44, 160, 44),
+        (214, 39, 40),
+        (148, 103, 189),
+        (140, 86, 75),
+        (227, 119, 194),
+        (188, 189, 34),
+        (23, 190, 207),
+        (174, 199, 232),
+        (255, 187, 120),
+        (152, 223, 138),
+        (255, 152, 150),
+        (197, 176, 213),
+        (196, 156, 148),
+        (247, 182, 210),
+        (219, 219, 141),
+        (158, 218, 229),
+        (57, 59, 121),
+        (99, 121, 57),
+        (140, 109, 49),
+        (132, 60, 57),
+        (123, 65, 115),
+        (82, 84, 163),
     ]
 
     # Baseline map projections fallback
@@ -914,6 +947,14 @@ class GMTEngine:
             config.projection = self.get_recommended_projections(config.region, config.variable_name, {"description": config.variable_description})[0][1] if config.is_geographic else "X16c/10c"
         if os.path.isfile(config.cpt): config.cpt = os.path.abspath(config.cpt)
         config.validate()
+        if config.cpt_categorical:
+            if config.cpt_range is None:
+                if config.flag_values:
+                    lo, hi = float(min(config.flag_values)), float(max(config.flag_values))
+                    config.cpt_range = (lo, hi) if lo < hi else (lo - 1.0, hi + 1.0)
+                else:
+                    config.cpt_range = (0.0, 1.0)
+            return config
         if config.cpt_range is None:
             scan_grid = self._get_or_create_preview_grid(config.grid_spec, config.region) if config.preview else config.grid_spec
             info = self.get_masked_grid_info(scan_grid, config.region, config.mask_mode)
@@ -1054,7 +1095,7 @@ class GMTEngine:
         os.makedirs(target_dir, exist_ok=True)
 
         zip_url = "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip"
-        headers = {"User-Agent": "Graticule/0.5.0"}
+        headers = {"User-Agent": "Graticule/0.6.0"}
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
             tmp_path = tmp_zip.name
@@ -1138,27 +1179,124 @@ class GMTEngine:
         kept = [a for a in base if not a.startswith("-") or (a.split("=", 1)[0] if a.startswith("--") else a[:2]) not in keys]
         return kept + tokens
 
-    def _commands(self, config, target, fmt, grid=None):
+    def _extract_categorical_values(self, config, grid) -> List[float]:
+        if config.flag_values:
+            out: List[float] = []
+            seen = set()
+            for v in config.flag_values:
+                fv = float(v)
+                if math.isfinite(fv) and fv not in seen:
+                    seen.add(fv)
+                    out.append(fv)
+            if out:
+                return out[:64]
+
+        file_path, var_name, slice_tuple = self._parse_grid_spec(grid)
+        if os.path.isfile(file_path):
+            try:
+                import netCDF4
+                with netCDF4.Dataset(file_path, "r") as ds:
+                    vname = var_name or next(
+                        (k for k, v in ds.variables.items() if k not in ds.dimensions and v.ndim >= 2),
+                        None,
+                    )
+                    if vname and vname in ds.variables:
+                        var = ds.variables[vname]
+                        ny, nx = var.shape[-2], var.shape[-1]
+                        sy = max(1, ny // 512)
+                        sx = max(1, nx // 512)
+                        indexer = tuple(slice_tuple) + (slice(None, None, sy), slice(None, None, sx))
+                        arr = np.asarray(var[indexer], dtype=np.float64)
+                        vals = np.unique(arr[np.isfinite(arr)])
+                        del arr
+                        if vals.size > 0:
+                            return [float(v) for v in vals[:64]]
+            except Exception:
+                pass
+
+        info = self.get_grid_info(grid, scan=True)
+        lo, hi = int(round(info["z_min"])), int(round(info["z_max"]))
+        if hi >= lo and (hi - lo) < 64:
+            return [float(v) for v in range(lo, hi + 1)]
+        raise ValueError("Categorical mode requires CF flag_values or <= 64 distinct discrete values.")
+
+    def _sample_cpt_colors(self, cpt_name: str, count: int, reverse: bool) -> List[Tuple[int, int, int]]:
+        n = max(1, count)
+        name_low = (cpt_name or "").strip().lower()
+        if name_low in ("categorical", "paired", ""):
+            base = [self.CATEGORICAL_RGB[i % len(self.CATEGORICAL_RGB)] for i in range(n)]
+            return list(reversed(base)) if reverse else base
+
+        try:
+            args = ["makecpt", f"-C{cpt_name}", f"-T0/{max(1, n - 1)}/{n}+n", "-Z"]
+            if reverse:
+                args.append("-Ic")
+            out = self._run(args).stdout
+            parsed: List[Tuple[int, int, int]] = []
+            for raw_line in out.splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith(("#", "B", "F", "N")):
+                    continue
+                cols = line.split()
+                if len(cols) >= 2 and "/" in cols[1]:
+                    rgb = cols[1].split("/")
+                    if len(rgb) == 3:
+                        parsed.append((int(float(rgb[0])), int(float(rgb[1])), int(float(rgb[2]))))
+                elif len(cols) >= 4:
+                    parsed.append((int(float(cols[1])), int(float(cols[2])), int(float(cols[3]))))
+            if len(parsed) >= n:
+                return parsed[:n]
+        except Exception:
+            pass
+        base = [self.CATEGORICAL_RGB[i % len(self.CATEGORICAL_RGB)] for i in range(n)]
+        return list(reversed(base)) if reverse else base
+
+    def _categorical_cpt_text(self, config, grid) -> str:
+        values = self._extract_categorical_values(config, grid)
+        meanings = list(config.flag_meanings or ())
+        colors = self._sample_cpt_colors(config.cpt, len(values), config.cpt_reverse)
+        use_neutral_zero = (config.cpt or "").strip().lower() in ("categorical", "paired", "")
+
+        lines = ["# COLOR_MODEL = RGB", "# CATEGORICAL"]
+        for idx, val in enumerate(values):
+            key = str(int(round(val))) if abs(val - round(val)) < 1e-6 else f"{val:g}"
+            meaning = meanings[idx].strip() if idx < len(meanings) else ""
+            r, g, b = colors[idx]
+            if use_neutral_zero and abs(val) < 1e-9 and any(w in meaning.lower() for w in ("land", "none", "nodata", "background")):
+                r, g, b = (215, 215, 215)
+            if len(values) <= 8 and meaning:
+                clean_m = meaning.replace("_", " ")[:14].strip()
+                label = f"{key} {clean_m}"
+            else:
+                label = key
+            lines.append(f"{key}\t{r}/{g}/{b}\t;{label}")
+        lines.extend(["B\tblack", "F\twhite", f"N\t{config.nan_color}"])
+        return "\n".join(lines) + "\n"
+
+    def _commands(self, config, target, fmt, grid=None, cat_cpt_path=None):
         """One command builder serves GUI rendering, CLI and exported scripts."""
         conf = self._settings(config)
         if fmt != "ps": conf["PS_MEDIA"] = "auto"
         cmds = [["begin", target, fmt, f"E{config.dpi}"], ["set", *[x for kv in conf.items() for x in kv]]]
-        lo, hi = config.cpt_range
-        # Explicit sampling makes continuous (-Z) and discrete modes visibly different.
-        count = 257 if config.cpt_continuous else config.cpt_levels+1
-        cpt = ["makecpt", f"-C{config.cpt}", "-D", f"-T{lo:.15g}/{hi:.15g}/{count}+n"]
-        if config.cpt_continuous:
-            cpt.append("-Z")
-        if config.cpt_reverse:
-            cpt.append("-Ic")
-        cpt = self._merge_options(cpt, config.makecpt_args)
-        cmds.append(cpt)
+        use_cat = bool(config.cpt_categorical and cat_cpt_path)
+        cpt_flag = f"-C{cat_cpt_path}" if use_cat else "-C"
+        if not use_cat:
+            lo, hi = config.cpt_range
+            # Explicit sampling makes continuous (-Z) and discrete modes visibly different.
+            count = 257 if config.cpt_continuous else config.cpt_levels+1
+            cpt = ["makecpt", f"-C{config.cpt}", "-D", f"-T{lo:.15g}/{hi:.15g}/{count}+n"]
+            if config.cpt_continuous:
+                cpt.append("-Z")
+            if config.cpt_reverse:
+                cpt.append("-Ic")
+            cpt = self._merge_options(cpt, config.makecpt_args)
+            cmds.append(cpt)
         grid = grid or config.grid_spec
         interrupted = config.projection == "IntMollOcean"
         sectors = self.SECTORS if interrupted else [(None, None, config.region, 0, 0)]
         for clon, width, region, ox, oy in sectors:
             proj = f"W{clon}/{width}c" if interrupted else config.projection
-            args = ["grdimage", grid, self._region_flag(region), f"-J{proj}", "-C", f"-n{config.interpolation}+c",
+            args = ["grdimage", grid, self._region_flag(region), f"-J{proj}", cpt_flag, f"-n{config.interpolation}+c",
                     f"-Xa{5+ox}c", f"-Ya{5+oy}c", f"-E{config.dpi}"]
             extra = shlex.split(config.extra_args)
             custom_frame = any(a.startswith("-B") for a in extra)
@@ -1196,8 +1334,15 @@ class GMTEngine:
                 text = self._ps_escape(config.title)
                 cmds.append(["text", local_r, local_j, "-Xa5c", "-Ya5c", "-N", "-D0c/0.35c", f"-F+cTC+f{font}+jBC+t{text}"])
         if config.show_colorbar:
-            cmds.append(self._merge_options(["colorbar", "-C", "-Xa5c", "-Ya5c", "-DJBC+w70%/0.3c+h+o0c/1.1c", "-Baf" + (f"+l{self._label(config.colorbar_title)}" if config.colorbar_title else ""),
-                         f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"], config.colorbar_args))
+            if use_cat:
+                cb_args = ["colorbar", cpt_flag, "-Xa5c", "-Ya5c", "-DJBC+w75%/0.3c+h+o0c/1.1c", "-L"]
+                if config.colorbar_title:
+                    cb_args.append(f"-Bx+l{self._label(config.colorbar_title)}")
+                cb_args.extend([f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"])
+                cmds.append(self._merge_options(cb_args, config.colorbar_args))
+            else:
+                cmds.append(self._merge_options(["colorbar", "-C", "-Xa5c", "-Ya5c", "-DJBC+w70%/0.3c+h+o0c/1.1c", "-Baf" + (f"+l{self._label(config.colorbar_title)}" if config.colorbar_title else ""),
+                             f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"], config.colorbar_args))
         cmds.append(["end"])
         return cmds
 
@@ -1247,8 +1392,12 @@ class GMTEngine:
                     "Ghostscript (gs) was not found in PATH for psconvert. "
                     "Install Ghostscript (for example via conda/micromamba, Homebrew, or MacPorts) and ensure gs is accessible."
                 )
+            cat_cpt_path = None
+            if render_cfg.cpt_categorical:
+                cat_cpt_path = os.path.join(td, "categorical.cpt")
+                Path(cat_cpt_path).write_text(self._categorical_cpt_text(render_cfg, grid), encoding="utf-8")
             ps_target = os.path.join(td, "map")
-            for args in self._commands(render_cfg, ps_target, "ps", grid):
+            for args in self._commands(render_cfg, ps_target, "ps", grid, cat_cpt_path=cat_cpt_path):
                 res = subprocess.run([self.gmt_bin, *args], cwd=td, env=env, capture_output=True, text=True, timeout=180)
                 if res.returncode:
                     raise RuntimeError(f"GMT {args[0]} failed:\n{res.stderr.strip()}")
@@ -1289,12 +1438,23 @@ class GMTEngine:
         if fmt == "svg":
             raise ValueError("Standalone GMT scripts support PNG/PDF/EPS/TIFF/JPG/PS. Use --output map.svg for SVG conversion.")
         base = os.path.splitext(output_filename)[0]
-        commands = self._commands(config, "__GRATICULE_TARGET__", fmt)
+        cat_cpt_text = self._categorical_cpt_text(config, config.grid_spec) if config.cpt_categorical else None
+        commands = self._commands(config, "__GRATICULE_TARGET__", fmt, cat_cpt_path=("__CAT_CPT__" if cat_cpt_text else None))
         lines = ["#!/usr/bin/env bash", "# Generated by Graticule", "# graticule-config: " + json.dumps(asdict(config)),
                  "set -euo pipefail", 'export GMT_SESSION_NAME="graticule_$$"',
                  'work_dir=$(mktemp -d)', 'trap \'rm -rf "$work_dir"\' EXIT',
                  'export GMT_TMPDIR="$work_dir"', 'export GMT_USERDIR="$work_dir"', ""]
-        lines.extend(("gmt " + shlex.join(args)).replace("__GRATICULE_TARGET__", '\"$work_dir/map\"') for args in commands)
+        if cat_cpt_text:
+            lines.append("cat <<'GRATICULE_CPT_EOF' > \"$work_dir/categorical.cpt\"")
+            lines.extend(cat_cpt_text.rstrip("\n").splitlines())
+            lines.append("GRATICULE_CPT_EOF")
+            lines.append("")
+        lines.extend(
+            ("gmt " + shlex.join(args))
+            .replace("__GRATICULE_TARGET__", '\"$work_dir/map\"')
+            .replace("__CAT_CPT__", '\"$work_dir/categorical.cpt\"')
+            for args in commands
+        )
         parent = os.path.dirname(output_filename) or "."
         lines += ["mkdir -p -- " + shlex.quote(parent), 'cp -- "$work_dir/map.' + fmt + '" ' + shlex.quote(output_filename)]
         return "\n".join(lines)+"\n"
@@ -1360,7 +1520,7 @@ class GMTEngine:
                     if a.startswith("-J"): config.projection = a[2:]
                     elif a.startswith("-R"): config.region = tuple(map(float, a[2:].split("/")))
                     elif a.startswith("-n"): config.interpolation = a[2]
-                    elif a.startswith(("-X", "-Y", "-E")) or a == "-C": continue
+                    elif a.startswith(("-X", "-Y", "-E", "-C")): continue
                     elif a.startswith("-B"):
                         if "+t" in a: config.title = cls._ps_unescape(a.split("+t", 1)[1])
                         frame = a[2:].split("+", 1)[0]

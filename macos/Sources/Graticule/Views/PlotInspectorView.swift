@@ -7,6 +7,8 @@ struct PlotInspectorView: View {
     @State private var advancedExpanded = false
     @State private var customProjectionText = ""
     @State private var customCptText = ""
+    @State private var centerLonText = ""
+    @State private var levelsText = "16"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,13 +44,21 @@ struct PlotInspectorView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: session.config?.projection) { newValue in
             customProjectionText = newValue ?? ""
+            centerLonText = ProjectionCenterHelper.formattedCentralMeridian(from: newValue ?? "")
         }
         .onChange(of: session.config?.cpt) { newValue in
             customCptText = newValue ?? ""
         }
+        .onChange(of: session.config?.cptLevels) { newValue in
+            if let newValue {
+                levelsText = "\(newValue)"
+            }
+        }
         .onAppear {
             customProjectionText = session.config?.projection ?? ""
+            centerLonText = ProjectionCenterHelper.formattedCentralMeridian(from: session.config?.projection ?? "")
             customCptText = session.config?.cpt ?? ""
+            levelsText = "\(session.config?.cptLevels ?? 16)"
         }
     }
 
@@ -111,43 +121,83 @@ struct PlotInspectorView: View {
 
     @ViewBuilder
     private var mapInspectorForm: some View {
+        let isGeo = session.config?.isGeographic ?? true
+        let currentProj = session.config?.projection ?? ""
         Form {
             Section("Projection") {
-                Toggle("Auto-recommend for region", isOn: Binding(
-                    get: { session.config?.projectionMode == "auto" },
-                    set: { isAuto in
-                        session.config?.projectionMode = isAuto ? "auto" : "manual"
-                        Task {
-                            await session.refreshRecommendations()
-                            await session.renderNow()
+                if isGeo {
+                    Toggle("Auto-recommend for region", isOn: Binding(
+                        get: { session.config?.projectionMode == "auto" },
+                        set: { isAuto in
+                            session.config?.projectionMode = isAuto ? "auto" : "manual"
+                            Task {
+                                await session.refreshRecommendations()
+                                await session.renderNow()
+                            }
                         }
-                    }
-                ))
+                    ))
+                }
 
                 let options = session.recommendedProjections
                 Picker("Preset", selection: Binding(
-                    get: { session.config?.projection ?? "" },
+                    get: { currentProj },
                     set: { newCode in
                         session.config?.projection = newCode
                         session.config?.projectionMode = "manual"
                         customProjectionText = newCode
+                        centerLonText = ProjectionCenterHelper.formattedCentralMeridian(from: newCode)
                         session.scheduleRender(delayMs: 250)
                     }
                 )) {
                     ForEach(options) { opt in
                         Text(opt.label).tag(opt.code)
                     }
-                    if let current = session.config?.projection,
-                       !current.isEmpty,
-                       !options.contains(where: { $0.code == current }) {
-                        Text("Custom (\(current))").tag(current)
+                    if !currentProj.isEmpty,
+                       !options.contains(where: { $0.code == currentProj }) {
+                        Text("Custom (\(currentProj))").tag(currentProj)
+                    }
+                }
+
+                if isGeo && ProjectionCenterHelper.supportsCentralMeridian(currentProj) {
+                    let currentLon0 = ProjectionCenterHelper.extractCentralMeridian(from: currentProj)
+                    HStack(spacing: 6) {
+                        Text("Center Lon")
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        Button("0°") {
+                            applyCenterLon(0.0)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(currentLon0.map { abs($0) < 1e-6 } == true ? .accentColor : nil)
+
+                        Button("180°") {
+                            applyCenterLon(180.0)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .tint(currentLon0.map { abs(abs($0) - 180.0) < 1e-6 } == true ? .accentColor : nil)
+
+                        TextField("", text: $centerLonText, prompt: Text("lon0"))
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospacedDigit())
+                            .frame(width: 56)
+                            .onSubmit {
+                                let cleaned = centerLonText
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                                    .replacingOccurrences(of: "°", with: "")
+                                if let val = Double(cleaned), val.isFinite, (-360.0...360.0).contains(val) {
+                                    applyCenterLon(val)
+                                }
+                            }
                     }
                 }
 
                 HStack {
                     Text("GMT -J")
                         .foregroundStyle(.secondary)
-                    TextField("", text: $customProjectionText, prompt: Text("e.g. M16c"))
+                    TextField("", text: $customProjectionText, prompt: Text(isGeo ? "e.g. M16c" : "e.g. X16c/10c"))
                         .labelsHidden()
                         .textFieldStyle(.roundedBorder)
                         .font(.system(.body, design: .monospaced))
@@ -157,20 +207,21 @@ struct PlotInspectorView: View {
                             guard !code.isEmpty else { return }
                             session.config?.projection = code
                             session.config?.projectionMode = "manual"
+                            centerLonText = ProjectionCenterHelper.formattedCentralMeridian(from: code)
                             session.scheduleRender(delayMs: 100)
                         }
                 }
             }
 
-            Section("Region (-R)") {
+            Section(isGeo ? "Region (-R)" : "Data Bounds (-R)") {
                 Grid(horizontalSpacing: 10, verticalSpacing: 8) {
                     GridRow {
-                        boundField("W", index: 0)
-                        boundField("E", index: 1)
+                        boundField(isGeo ? "W" : "X min", index: 0)
+                        boundField(isGeo ? "E" : "X max", index: 1)
                     }
                     GridRow {
-                        boundField("S", index: 2)
-                        boundField("N", index: 3)
+                        boundField(isGeo ? "S" : "Y min", index: 2)
+                        boundField(isGeo ? "N" : "Y max", index: 3)
                     }
                 }
                 .padding(.vertical, 2)
@@ -186,76 +237,78 @@ struct PlotInspectorView: View {
                 }
             }
 
-            Section("Overlays & Masking") {
-                Picker("Mask area", selection: binding(\.maskMode)) {
-                    Text("None").tag("none")
-                    Text("Hide land (ocean only)").tag("land")
-                    Text("Hide ocean (land only)").tag("ocean")
-                }
-                if session.config?.maskMode != "none" {
-                    TextField("Mask fill", text: binding(\.maskColor))
-                }
-                Toggle("Coastlines", isOn: binding(\.showCoast))
-
-                let cnEnabled = workspace.environment.enableCNBorders
-                Picker("Borders", selection: Binding(
-                    get: {
-                        let raw = session.config?.borderMode ?? "none"
-                        if cnEnabled { return raw }
-                        if raw == "gmt_global" || raw.hasPrefix("global_cn_") {
-                            return "gmt_global"
-                        }
-                        return "none"
-                    },
-                    set: { newMode in
-                        guard session.config != nil else { return }
-                        session.config?.borderMode = newMode
-                        session.config?.showBorders = (newMode == "gmt_global" || newMode == "global_cn_l1" || newMode == "global_cn_la")
-                        session.config?.cnBorderDir = workspace.environment.cnBorderDirOverride
-                        session.scheduleRender(delayMs: 250)
+            Section(isGeo ? "Overlays & Masking" : "Frame & Colorbar") {
+                if isGeo {
+                    Picker("Mask area", selection: binding(\.maskMode)) {
+                        Text("None").tag("none")
+                        Text("Hide land (ocean only)").tag("land")
+                        Text("Hide ocean (land only)").tag("ocean")
                     }
-                )) {
-                    Text("None").tag("none")
-                    Text("GMT Built-in (-N1)").tag("gmt_global")
-                    if cnEnabled {
-                        Divider()
-                        Text("CN-border L1 (National + 10-dash)").tag("cn_l1")
-                        Text("CN-border La (+ Provinces)").tag("cn_la")
-                        Text("Global + CN-border L1").tag("global_cn_l1")
-                        Text("Global + CN-border La").tag("global_cn_la")
+                    if session.config?.maskMode != "none" {
+                        TextField("Mask fill", text: binding(\.maskColor))
                     }
-                }
+                    Toggle("Coastlines", isOn: binding(\.showCoast))
 
-                let activeBorder = session.config?.borderMode ?? "none"
-                if cnEnabled && activeBorder.contains("cn_") {
-                    TextField("Border pen", text: binding(\.borderPen))
-                    if workspace.cnBorderStatus?.installed != true {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("GMT-China CN-border dataset not found locally.")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                            HStack(spacing: 8) {
-                                Button {
-                                    Task { await workspace.downloadCNBorder(reRenderSessionID: session.id) }
-                                } label: {
-                                    if workspace.isDownloadingCNBorder {
-                                        HStack(spacing: 6) {
-                                            ProgressView().controlSize(.small)
-                                            Text("Downloading…")
-                                        }
-                                    } else {
-                                        Label("Download CN-border", systemImage: "arrow.down.circle")
-                                    }
-                                }
-                                .disabled(workspace.isDownloadingCNBorder)
-
-                                Button("Import ZIP…") {
-                                    Task { await workspace.importCNBorderZip(reRenderSessionID: session.id) }
-                                }
-                                .disabled(workspace.isDownloadingCNBorder)
+                    let cnEnabled = workspace.environment.enableCNBorders
+                    Picker("Borders", selection: Binding(
+                        get: {
+                            let raw = session.config?.borderMode ?? "none"
+                            if cnEnabled { return raw }
+                            if raw == "gmt_global" || raw.hasPrefix("global_cn_") {
+                                return "gmt_global"
                             }
+                            return "none"
+                        },
+                        set: { newMode in
+                            guard session.config != nil else { return }
+                            session.config?.borderMode = newMode
+                            session.config?.showBorders = (newMode == "gmt_global" || newMode == "global_cn_l1" || newMode == "global_cn_la")
+                            session.config?.cnBorderDir = workspace.environment.cnBorderDirOverride
+                            session.scheduleRender(delayMs: 250)
                         }
-                        .padding(.vertical, 2)
+                    )) {
+                        Text("None").tag("none")
+                        Text("GMT Built-in (-N1)").tag("gmt_global")
+                        if cnEnabled {
+                            Divider()
+                            Text("CN-border L1 (National + 10-dash)").tag("cn_l1")
+                            Text("CN-border La (+ Provinces)").tag("cn_la")
+                            Text("Global + CN-border L1").tag("global_cn_l1")
+                            Text("Global + CN-border La").tag("global_cn_la")
+                        }
+                    }
+
+                    let activeBorder = session.config?.borderMode ?? "none"
+                    if cnEnabled && activeBorder.contains("cn_") {
+                        TextField("Border pen", text: binding(\.borderPen))
+                        if workspace.cnBorderStatus?.installed != true {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("GMT-China CN-border dataset not found locally.")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                                HStack(spacing: 8) {
+                                    Button {
+                                        Task { await workspace.downloadCNBorder(reRenderSessionID: session.id) }
+                                    } label: {
+                                        if workspace.isDownloadingCNBorder {
+                                            HStack(spacing: 6) {
+                                                ProgressView().controlSize(.small)
+                                                Text("Downloading…")
+                                            }
+                                        } else {
+                                            Label("Download CN-border", systemImage: "arrow.down.circle")
+                                        }
+                                    }
+                                    .disabled(workspace.isDownloadingCNBorder)
+
+                                    Button("Import ZIP…") {
+                                        Task { await workspace.importCNBorderZip(reRenderSessionID: session.id) }
+                                    }
+                                    .disabled(workspace.isDownloadingCNBorder)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
                     }
                 }
 
@@ -263,17 +316,31 @@ struct PlotInspectorView: View {
                 Toggle("Gridlines", isOn: binding(\.showGrid))
                 Toggle("Colorbar", isOn: binding(\.showColorbar))
 
-                Picker("Coast detail", selection: binding(\.coastResolution)) {
-                    Text("Crude").tag("c")
-                    Text("Low").tag("l")
-                    Text("Intermediate").tag("i")
-                    Text("High").tag("h")
-                    Text("Full").tag("f")
-                    Text("Auto").tag("a")
+                if isGeo {
+                    Picker("Coast detail", selection: binding(\.coastResolution)) {
+                        Text("Crude").tag("c")
+                        Text("Low").tag("l")
+                        Text("Intermediate").tag("i")
+                        Text("High").tag("h")
+                        Text("Full").tag("f")
+                        Text("Auto").tag("a")
+                    }
                 }
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func applyCenterLon(_ lon0: Double) {
+        guard var cfg = session.config else { return }
+        let updatedProj = ProjectionCenterHelper.applyingCentralMeridian(lon0, to: cfg.projection)
+        cfg.projection = updatedProj
+        cfg.projectionMode = "manual"
+        cfg.region = ProjectionCenterHelper.shiftedGlobalRegion(cfg.region, lon0: lon0)
+        session.config = cfg
+        customProjectionText = updatedProj
+        centerLonText = ProjectionCenterHelper.formattedCentralMeridian(from: updatedProj)
+        session.scheduleRender(delayMs: 120)
     }
 
     @ViewBuilder
@@ -282,7 +349,7 @@ struct PlotInspectorView: View {
             Text(label)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 14, alignment: .leading)
+                .frame(width: label.count > 2 ? 38 : 16, alignment: .leading)
             TextField(
                 "",
                 value: regionBoundBinding(index: index),
@@ -345,24 +412,87 @@ struct PlotInspectorView: View {
                         }
                 }
 
-                Picker("Interpolation", selection: binding(\.cptContinuous)) {
-                    Text("Continuous (-Z)").tag(true)
-                    Text("Discrete").tag(false)
+                let modeTag = (session.config?.cptCategorical == true) ? "categorical" : ((session.config?.cptContinuous ?? true) ? "continuous" : "discrete")
+                Picker("Mode", selection: Binding(
+                    get: { modeTag },
+                    set: { mode in
+                        guard session.config != nil else { return }
+                        if mode == "categorical" {
+                            session.config?.cptCategorical = true
+                            session.config?.cptContinuous = false
+                            session.config?.interpolation = "n"
+                            if let cur = session.config?.cpt, ["turbo", "rainbow", "panoply"].contains(cur) {
+                                session.config?.cpt = "categorical"
+                                customCptText = "categorical"
+                            }
+                        } else if mode == "discrete" {
+                            session.config?.cptCategorical = false
+                            session.config?.cptContinuous = false
+                        } else {
+                            session.config?.cptCategorical = false
+                            session.config?.cptContinuous = true
+                        }
+                        session.scheduleRender(delayMs: 200)
+                    }
+                )) {
+                    Text("Continuous").tag("continuous")
+                    Text("Discrete").tag("discrete")
+                    Text("Categorical").tag("categorical")
                 }
                 .pickerStyle(.segmented)
 
-                if session.config?.cptContinuous == false {
-                    Stepper(
-                        "Levels: \(session.config?.cptLevels ?? 16)",
-                        value: binding(\.cptLevels),
-                        in: 2...256
-                    )
+                if session.config?.cptCategorical == false && session.config?.cptContinuous == false {
+                    HStack(spacing: 8) {
+                        Text("Levels")
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 4)
+                        TextField("", text: $levelsText, prompt: Text("2–256"))
+                            .labelsHidden()
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption.monospacedDigit())
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 56)
+                            .onSubmit {
+                                if let raw = Int(levelsText.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                                    let clamped = min(256, max(2, raw))
+                                    levelsText = "\(clamped)"
+                                    session.config?.cptLevels = clamped
+                                    session.scheduleRender(delayMs: 120)
+                                } else {
+                                    levelsText = "\(session.config?.cptLevels ?? 16)"
+                                }
+                            }
+                        Stepper(
+                            "",
+                            value: Binding(
+                                get: { session.config?.cptLevels ?? 16 },
+                                set: { newVal in
+                                    let clamped = min(256, max(2, newVal))
+                                    levelsText = "\(clamped)"
+                                    session.config?.cptLevels = clamped
+                                    session.scheduleRender(delayMs: 250)
+                                }
+                            ),
+                            in: 2...256
+                        )
+                        .labelsHidden()
+                    }
                 }
 
                 Toggle("Reverse palette (-Ic)", isOn: binding(\.cptReverse))
             }
 
-            Section("Color Range (-T)") {
+            if session.config?.cptCategorical == true {
+                let count = session.config?.flagValues.count ?? 0
+                Section("Categorical Flags") {
+                    Text(count > 0
+                         ? "Auto-assigning discrete colors for \(count) CF flag values with nearest-neighbor interpolation (-nn)."
+                         : "Assigning distinct qualitative colors per unique value with nearest-neighbor interpolation (-nn).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Section("Color Range (-T)") {
                 Toggle("Auto-fit region & slice", isOn: Binding(
                     get: { session.config?.cptRange == nil },
                     set: { isAuto in
@@ -432,6 +562,7 @@ struct PlotInspectorView: View {
                     }
                     .disabled(session.isScanningRange)
                 }
+            }
             }
 
             Section("Labels") {
@@ -551,6 +682,16 @@ struct PlotInspectorView: View {
                             Text(variable.unsupportedReason)
                                 .font(.caption)
                                 .foregroundStyle(.orange)
+                        }
+                    }
+
+                    if !variable.flagValues.isEmpty {
+                        Section("Flag Definitions") {
+                            ForEach(Array(variable.flagValues.enumerated()), id: \.offset) { idx, fval in
+                                let keyText = abs(fval - fval.rounded()) < 1e-6 ? String(Int(fval.rounded())) : String(format: "%.4g", fval)
+                                let meaning = idx < variable.flagMeanings.count ? variable.flagMeanings[idx].replacingOccurrences(of: "_", with: " ") : ""
+                                LabeledContent(keyText, value: meaning.isEmpty ? "Class \(keyText)" : meaning)
+                            }
                         }
                     }
 

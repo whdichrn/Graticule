@@ -144,6 +144,7 @@ struct SettingsView: View {
                 if let info = workspace.serverInfo {
                     LabeledContent("GMT Version", value: info.gmtVersion)
                     LabeledContent("GMT Binary", value: info.gmtBin)
+                    LabeledContent("Ghostscript (gs)", value: info.gsBin ?? environment.resolvedGhostscriptPath ?? "Not found (install ghostscript)")
                     LabeledContent("Python", value: info.python)
                 } else if let err = workspace.backendError {
                     Text(err)
@@ -155,6 +156,10 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+
+                Text("Requires Python 3.9+ (numpy, xarray, netCDF4), GMT 6, and Ghostscript (gs) via micromamba/conda, Homebrew, or MacPorts.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 HStack {
                     Button("Auto-Detect") {

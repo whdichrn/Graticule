@@ -33,6 +33,9 @@ class VarMeta:
     x_range: Optional[Tuple[float, float]] = None
     y_range: Optional[Tuple[float, float]] = None
     v_range: Optional[Tuple[float, float]] = None
+    flag_values: List[float] = field(default_factory=list)
+    flag_meanings: List[str] = field(default_factory=list)
+    is_categorical: bool = False
 
     @property
     def display_title(self) -> str:
@@ -159,6 +162,32 @@ class NetCDFMetadataReader:
                     except Exception:
                         pass
 
+                flag_values: List[float] = []
+                flag_meanings: List[str] = []
+                if "flag_values" in attrs:
+                    try:
+                        raw_flags = np.atleast_1d(np.asarray(attrs["flag_values"], dtype=float)).ravel()
+                        seen_flags = set()
+                        for fv in raw_flags:
+                            val = float(fv)
+                            if np.isfinite(val) and val not in seen_flags:
+                                seen_flags.add(val)
+                                flag_values.append(val)
+                    except Exception:
+                        flag_values = []
+                if "flag_meanings" in attrs:
+                    try:
+                        raw_meanings = attrs["flag_meanings"]
+                        if isinstance(raw_meanings, (list, tuple, np.ndarray)):
+                            flag_meanings = [str(m) for m in raw_meanings]
+                        else:
+                            flag_meanings = [tok for tok in str(raw_meanings).split() if tok]
+                    except Exception:
+                        flag_meanings = []
+                is_categorical = 2 <= len(flag_values) <= 64
+                if is_categorical and v_range is None:
+                    v_range = (float(min(flag_values)), float(max(flag_values)))
+
                 var_meta = VarMeta(
                     name=str(var_name),
                     dimensions=dims,
@@ -172,6 +201,9 @@ class NetCDFMetadataReader:
                     x_range=x_range,
                     y_range=y_range,
                     v_range=v_range,
+                    flag_values=flag_values,
+                    flag_meanings=flag_meanings,
+                    is_categorical=is_categorical,
                     is_geographic=is_geographic,
                     unsupported_reason=unsupported_reason
                 )

@@ -377,3 +377,79 @@ def test_child_path_macports_and_minimal_env_render(engine, grids, tmp_path, mon
     out = tmp_path / 'minimal_path.png'
     engine.render(config(grids, show_coast=False), str(out))
     assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_panoply_palette_and_no_coolwarm(engine, grids, tmp_path):
+    assert 'panoply' in engine.CPT_OPTIONS
+    assert 'coolwarm' not in engine.CPT_OPTIONS
+    out = tmp_path / 'panoply.png'
+    engine.render(config(grids, cpt='panoply', show_coast=False), str(out))
+    assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_pacific_centered_projection_0_360(engine, grids, tmp_path):
+    out = tmp_path / 'pacific.png'
+    cfg = replace(
+        config(grids, show_coast=False),
+        region=(0.0, 360.0, -90.0, 90.0),
+        projection='W180/16c',
+    )
+    engine.render(cfg, str(out))
+    assert out.is_file() and out.stat().st_size > 1000
+
+
+def test_categorical_flag_values_detection_and_render(engine, tmp_path):
+    import netCDF4
+    from graticule.backend.nc_reader import NetCDFMetadataReader as Reader
+
+    nc_path = tmp_path / 'tid_flags.nc'
+    lon = np.linspace(-180.0, 180.0, 37)
+    lat = np.linspace(-90.0, 90.0, 19)
+    flags = np.array([0, 10, 11, 40, 41, 70], dtype=np.int16)
+    data = np.tile(flags, (19, 7))[:, :37]
+
+    with netCDF4.Dataset(nc_path, 'w', format='NETCDF4') as ds:
+        ds.createDimension('lon', lon.size)
+        ds.createDimension('lat', lat.size)
+        x = ds.createVariable('lon', 'f8', ('lon',))
+        x[:] = lon
+        x.units = 'degrees_east'
+        y = ds.createVariable('lat', 'f8', ('lat',))
+        y[:] = lat
+        y.units = 'degrees_north'
+        v = ds.createVariable('tid', 'i2', ('lat', 'lon'))
+        v[:] = data
+        v.long_name = 'Type Identifier'
+        v.flag_values = flags
+        v.flag_meanings = 'Land Singlebeam Multibeam Predicted Interpolated PreGenerated'
+
+    meta = Reader.open(str(nc_path))
+    var = meta.variables['tid']
+    assert var.is_categorical is True
+    assert var.flag_values == [0.0, 10.0, 11.0, 40.0, 41.0, 70.0]
+    assert var.flag_meanings[0] == 'Land'
+
+    spec = Reader.build_gmt_grid_spec(str(nc_path), var, {})
+    cfg = PlotConfig(
+        grid_spec=spec,
+        source_path=str(nc_path),
+        variable_name='tid',
+        projection='Q14c',
+        cpt='categorical',
+        cpt_continuous=False,
+        cpt_categorical=True,
+        flag_values=tuple(var.flag_values),
+        flag_meanings=tuple(var.flag_meanings),
+        interpolation='n',
+        show_coast=False,
+        dpi=72,
+    )
+    out = tmp_path / 'tid_cat.png'
+    engine.render(cfg, str(out))
+    assert out.is_file() and out.stat().st_size > 1000
+
+    script = engine.generate_script(cfg)
+    assert 'categorical.cpt' in script and '# CATEGORICAL' in script and 'gmt makecpt' not in script
+    restored = engine.parse_script_to_config(script, cfg)
+    assert restored.cpt_categorical is True
+    assert list(restored.flag_values) == [0.0, 10.0, 11.0, 40.0, 41.0, 70.0]

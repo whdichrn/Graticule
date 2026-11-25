@@ -30,9 +30,12 @@ struct RegionEntry: Identifiable, Sendable, Equatable {
         self.cacheStyleSignature = cacheStyleSignature
     }
 
-    static func formatRegionLabel(_ region: [Double]) -> String {
+    static func formatRegionLabel(_ region: [Double], isGeographic: Bool = true) -> String {
         guard region.count == 4 else { return "Region" }
-        return String(format: "%.1f°–%.1f°, %.1f°–%.1f°", region[0], region[1], region[2], region[3])
+        if isGeographic {
+            return String(format: "%.1f°–%.1f°, %.1f°–%.1f°", region[0], region[1], region[2], region[3])
+        }
+        return String(format: "X %.4g–%.4g, Y %.4g–%.4g", region[0], region[1], region[2], region[3])
     }
 }
 

@@ -227,13 +227,97 @@ struct PlotCanvasContainerView: View {
             systemImage: "globe.asia.australia",
             description: "Drop .nc, .nc4, .cdf, .grd, .h5, or .npz files here, or open from Finder."
         ) {
-            Button("Open Dataset…") {
-                workspace.openFileDialog(in: session.id)
+            VStack(spacing: 12) {
+                Button("Open Dataset…") {
+                    workspace.openFileDialog(in: session.id)
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut("o", modifiers: .command)
+
+                environmentStatusCard
             }
-            .buttonStyle(.borderedProminent)
-            .keyboardShortcut("o", modifiers: .command)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var environmentStatusCard: some View {
+        let pyPath = workspace.environment.resolvedPythonPath
+        let gmtPath = workspace.environment.resolvedGMTPath
+        let gsPath = workspace.serverInfo?.gsBin ?? workspace.environment.resolvedGhostscriptPath
+        let allReady = (pyPath != nil && gmtPath != nil && gsPath != nil && workspace.backendError == nil)
+
+        Group {
+            if let info = workspace.serverInfo, allReady {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text("GMT \(info.gmtVersion) · Python · Ghostscript Ready")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("First-Run Environment Setup", systemImage: "wrench.and.screwdriver")
+                        .font(.caption.weight(.semibold))
+                    statusRow(label: "Python 3.9+ (numpy, xarray, netCDF4)", ok: pyPath != nil)
+                    statusRow(label: "GMT 6", ok: gmtPath != nil)
+                    statusRow(label: "Ghostscript (gs)", ok: gsPath != nil)
+                    if let err = workspace.backendError, !err.isEmpty {
+                        Text(err)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                            .textSelection(.enabled)
+                    }
+                    Text("Install GMT 6, Ghostscript, and Python dependencies (via micromamba/conda, Homebrew, or MacPorts), or set custom binary paths in Settings (⌘,).")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 8) {
+                        if #available(macOS 14.0, *) {
+                            SettingsLink {
+                                Text("Environment Settings…")
+                            }
+                            .controlSize(.small)
+                        } else {
+                            Button("Environment Settings…") {
+                                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                            }
+                            .controlSize(.small)
+                        }
+                        Button("Retry") {
+                            Task { await workspace.restartBackend() }
+                        }
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 2)
+                }
+                .padding(12)
+                .frame(maxWidth: 420, alignment: .leading)
+                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
+        }
+        .padding(.top, 6)
+    }
+
+    @ViewBuilder
+    private func statusRow(label: String, ok: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
+                .font(.caption)
+            Text(label)
+                .font(.caption)
+            Spacer(minLength: 6)
+            Text(ok ? "OK" : "Missing")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(ok ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.orange))
+        }
     }
 
     @ViewBuilder
@@ -269,6 +353,7 @@ struct PlotCanvasContainerView: View {
         let dataset = workspace.dataset(for: session.datasetPath)
         let variable = workspace.variable(named: session.variableName, inDataset: session.datasetPath)
         let sliceDims = variable?.sliceDims ?? []
+        let isGeo = session.config?.isGeographic ?? true
 
         VStack(alignment: .leading, spacing: 8) {
             if !sliceDims.isEmpty, let dataset {
@@ -280,11 +365,14 @@ struct PlotCanvasContainerView: View {
 
             HStack(spacing: 12) {
                 if let coord = session.cursorCoord {
-                    Text(String(format: "Lon %.3f°  Lat %.3f°", coord.lon, coord.lat))
+                    let coordText = isGeo
+                        ? String(format: "Lon %.3f°  Lat %.3f°", coord.lon, coord.lat)
+                        : String(format: "X %.4g  Y %.4g", coord.lon, coord.lat)
+                    Text(coordText)
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.primary)
                 } else {
-                    Text("Lon --  Lat --")
+                    Text(isGeo ? "Lon --  Lat --" : "X --  Y --")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -299,7 +387,7 @@ struct PlotCanvasContainerView: View {
                 if let region = session.config?.region, region.count == 4 {
                     Divider()
                         .frame(height: 12)
-                    Text(RegionEntry.formatRegionLabel(region))
+                    Text(RegionEntry.formatRegionLabel(region, isGeographic: isGeo))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
