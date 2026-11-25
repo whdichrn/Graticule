@@ -730,7 +730,7 @@ struct PlotInspectorView: View {
                                     .controlSize(.small)
                                 }
 
-                                Button("CDL / Structure…") {
+                                Button("CDL…") {
                                     workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
                                 }
                                 .buttonStyle(.bordered)

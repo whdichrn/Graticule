@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "graticule"
-version = "0.7.0"
+version = "0.7.1"
 description = "Native macOS SwiftUI and Python/GMT 6 viewer and cartographic plotter for NetCDF, HDF, and GMT grids."
 readme = "README.md"
 license = {text = "MIT"}

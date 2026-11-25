@@ -100,10 +100,10 @@ struct PlotCanvasContainerView: View {
         AdaptiveEmptyState(
             "Select a Variable to Plot",
             systemImage: "map",
-            description: "Double-click a plottable grid in the sidebar (or use its plot button) to render. Single-click any file or variable to inspect metadata."
+            description: "Double-click a plottable grid in the sidebar to render. Single-click any file or variable to inspect metadata."
         ) {
             if let path = inspectedPath {
-                Button("Inspect Structure (CDL)…") {
+                Button("View CDL…") {
                     workspace.openStructureSheet(datasetPath: path, inSession: session.id)
                 }
                 .buttonStyle(.bordered)

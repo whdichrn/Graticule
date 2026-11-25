@@ -29,7 +29,7 @@ import numpy as np
 from .gmt_engine import GMTEngine, PlotConfig
 from .nc_reader import DatasetMeta, NetCDFMetadataReader
 
-SERVER_VERSION = "0.7.0"
+SERVER_VERSION = "0.7.1"
 HOVER_GRID_SIZE = 65
 PREVIEW_CACHE_LIMIT = 24
 DATASET_CACHE_LIMIT = 32

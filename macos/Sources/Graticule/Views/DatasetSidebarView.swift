@@ -35,7 +35,7 @@ struct DatasetSidebarView: View {
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 7))
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
-                .padding(.bottom, 4)
+                .padding(.bottom, 6)
             }
 
             if workspace.datasets.isEmpty {
@@ -47,14 +47,14 @@ struct DatasetSidebarView: View {
                     )
                     .listRowSeparator(.hidden)
                 }
-                .listStyle(.sidebar)
+                .listStyle(.inset)
             } else {
                 List(selection: selectionBinding) {
                     ForEach(workspace.datasets) { dataset in
                         datasetTree(dataset)
                     }
                 }
-                .listStyle(.sidebar)
+                .listStyle(.inset(alternatesRowBackgrounds: true))
             }
 
             Divider()
@@ -133,12 +133,13 @@ struct DatasetSidebarView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "square.grid.2x2")
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("Plottable Grids (\(plotables.count))")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 2)
                     }
                 }
 
@@ -162,12 +163,13 @@ struct DatasetSidebarView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "slider.horizontal.2.square")
-                                .font(.caption2)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                             Text("Coordinates & Other (\(nonPlotables.count))")
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }
+                        .padding(.vertical, 2)
                     }
                 }
             } label: {
@@ -179,39 +181,30 @@ struct DatasetSidebarView: View {
 
     @ViewBuilder
     private func datasetHeaderRow(_ dataset: DatasetMeta) -> some View {
+        let isSelected = session.inspectedTarget == .dataset(dataset.filePath)
         HStack(spacing: 6) {
             Image(systemName: "doc.text")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isSelected ? Color.white : Color.secondary)
+                .frame(width: 14)
             Text(dataset.fileName)
                 .font(.subheadline.weight(.medium))
+                .foregroundStyle(isSelected ? Color.white : Color.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(dataset.filePath)
-            Spacer(minLength: 4)
-            Text("\(dataset.variables.count)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 1)
-                .background(.quaternary.opacity(0.6), in: Capsule())
-
-            Button {
-                workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
-            } label: {
-                Image(systemName: "list.bullet.rectangle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help("Show File Structure (CDL)")
+            Spacer(minLength: 8)
+            Text("\(dataset.variables.count) vars")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
         }
+        .padding(.vertical, 3)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Inspect File Info") {
                 workspace.inspectDataset(path: dataset.filePath, inSession: session.id, switchToInfoTab: true)
             }
-            Button("Show Structure (CDL)…") {
+            Button("Show CDL…") {
                 workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
             }
             Divider()
@@ -227,56 +220,42 @@ struct DatasetSidebarView: View {
 
     @ViewBuilder
     private func variableRow(dataset: DatasetMeta, variable: VarMeta, isPlotable: Bool) -> some View {
+        let isSelected = session.inspectedTarget == .variable(datasetPath: dataset.filePath, variableName: variable.name)
         let isPlotted = session.datasetPath == dataset.filePath && session.variableName == variable.name
-        HStack(spacing: 8) {
+        let summary = inlineSummary(for: variable)
+
+        HStack(spacing: 7) {
             Image(systemName: iconName(for: variable, isPlotable: isPlotable))
                 .font(.caption)
-                .foregroundStyle(isPlotted ? Color.accentColor : (isPlotable ? .primary : .secondary))
+                .foregroundStyle(
+                    isSelected
+                        ? Color.white
+                        : (isPlotted ? Color.accentColor : (isPlotable ? Color.primary : Color.secondary))
+                )
                 .frame(width: 14)
 
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text(variable.name)
-                        .font(.body)
-                        .fontWeight(isPlotted ? .semibold : .regular)
-                        .foregroundStyle(isPlotable ? .primary : .secondary)
-                        .lineLimit(1)
-                    if isPlotted {
-                        Circle()
-                            .fill(Color.accentColor)
-                            .frame(width: 5, height: 5)
-                    }
-                }
+            Text(variable.name)
+                .font(.body)
+                .fontWeight(isPlotted ? .semibold : .regular)
+                .foregroundStyle(isSelected ? Color.white : (isPlotable ? Color.primary : Color.secondary))
+                .lineLimit(1)
+                .truncationMode(.tail)
 
-                Text(subtitle(for: variable))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            if isPlotted {
+                Circle()
+                    .fill(isSelected ? Color.white : Color.accentColor)
+                    .frame(width: 5, height: 5)
             }
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 8)
 
-            if isPlotable {
-                Button {
-                    let cmdPressed = NSEvent.modifierFlags.contains(.command)
-                    Task {
-                        await workspace.selectVariable(
-                            datasetPath: dataset.filePath,
-                            varName: variable.name,
-                            inSession: session.id,
-                            openInNewTab: cmdPressed
-                        )
-                    }
-                } label: {
-                    Image(systemName: isPlotted ? "arrow.clockwise.circle" : "play.fill")
-                        .font(.caption)
-                        .foregroundStyle(isPlotted ? Color.accentColor : .secondary)
-                }
-                .buttonStyle(.borderless)
-                .help("Plot \(variable.name) (⌘-click for new tab)")
-            }
+            Text(summary)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
@@ -325,7 +304,7 @@ struct DatasetSidebarView: View {
                     switchToInfoTab: true
                 )
             }
-            Button("Show File Structure (CDL)…") {
+            Button("Show CDL…") {
                 workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
             }
             Divider()
@@ -358,13 +337,18 @@ struct DatasetSidebarView: View {
         return variable.isGeographic ? "map" : "squareshape.split.3x3"
     }
 
-    private func subtitle(for variable: VarMeta) -> String {
-        var parts = ["[\(variable.shapeSummary)]"]
-        if variable.isCategorical && !variable.flagValues.isEmpty {
-            parts.append("\(variable.flagValues.count) flags")
-        } else if !variable.units.isEmpty {
-            parts.append(variable.units)
+    private func inlineSummary(for variable: VarMeta) -> String {
+        if variable.shape.isEmpty {
+            return variable.dtype.isEmpty ? "scalar" : variable.dtype
         }
-        return parts.joined(separator: " · ")
+        let shapeText = variable.shape.map(String.init).joined(separator: "×")
+        if variable.isCategorical && !variable.flagValues.isEmpty {
+            return "\(shapeText) · \(variable.flagValues.count) flags"
+        }
+        let unit = variable.units.trimmingCharacters(in: .whitespacesAndNewlines)
+        if unit.isEmpty || (variable.isCategorical && ["1", "none", "unitless", "-"].contains(unit.lowercased())) {
+            return shapeText
+        }
+        return "\(shapeText) · \(unit)"
     }
 }

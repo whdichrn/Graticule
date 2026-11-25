@@ -2,20 +2,13 @@ import AppKit
 import SwiftUI
 
 struct DatasetStructureSheet: View {
-    enum DisplayMode: String, CaseIterable, Identifiable {
-        case structured = "Structured"
-        case cdl = "CDL (ncdump -h)"
-
-        var id: String { rawValue }
-    }
-
     @ObservedObject var workspace: WorkspaceManager
     @ObservedObject var session: PlotSession
     let datasetPath: String
 
     @Environment(\.dismiss) private var dismiss
-    @State private var mode: DisplayMode = .structured
     @State private var searchText = ""
+    @State private var wrapLines = true
     @State private var didCopy = false
 
     private var dataset: DatasetMeta? {
@@ -27,13 +20,7 @@ struct DatasetStructureSheet: View {
             if let dataset {
                 headerView(for: dataset)
                 Divider()
-
-                switch mode {
-                case .structured:
-                    structuredContent(for: dataset)
-                case .cdl:
-                    cdlContent(for: dataset)
-                }
+                cdlContent(for: dataset)
             } else {
                 AdaptiveEmptyState(
                     "Dataset Closed",
@@ -43,7 +30,7 @@ struct DatasetStructureSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .frame(minWidth: 700, idealWidth: 780, minHeight: 520, idealHeight: 620)
+        .frame(minWidth: 680, idealWidth: 760, minHeight: 500, idealHeight: 600)
     }
 
     @ViewBuilder
@@ -51,7 +38,7 @@ struct DatasetStructureSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(dataset.fileName)
+                    Text("\(dataset.fileName) — CDL (ncdump -h)")
                         .font(.title3.weight(.semibold))
                     Text(dataset.filePath)
                         .font(.caption)
@@ -87,21 +74,12 @@ struct DatasetStructureSheet: View {
                 .controlSize(.small)
             }
 
-            HStack(spacing: 10) {
-                Picker("View", selection: $mode) {
-                    ForEach(DisplayMode.allCases) { item in
-                        Text(item.rawValue).tag(item)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 240)
-
+            HStack(spacing: 12) {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
                         .font(.caption)
-                    TextField("Filter variables or attributes…", text: $searchText)
+                    TextField("Filter CDL lines…", text: $searchText)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                     if !searchText.isEmpty {
@@ -117,146 +95,13 @@ struct DatasetStructureSheet: View {
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+
+                Toggle("Wrap lines", isOn: $wrapLines)
+                    .toggleStyle(.checkbox)
+                    .font(.subheadline)
             }
         }
         .padding(16)
-    }
-
-    @ViewBuilder
-    private func structuredContent(for dataset: DatasetMeta) -> some View {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let filteredVars = dataset.variables.filter { matchesVariable($0, query: query) }
-        let filteredGlobals = dataset.globalAttrs.filter {
-            query.isEmpty || $0.key.lowercased().contains(query) || $0.value.lowercased().contains(query)
-        }
-
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                if !dataset.dimensions.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Dimensions")
-                            .font(.headline)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(dataset.dimensions.keys.sorted(), id: \.self) { dim in
-                                    Text("\(dim) = \(dataset.dimensions[dim] ?? 0)")
-                                        .font(.caption.monospacedDigit())
-                                        .padding(.horizontal, 8)
-                                        .padding(.vertical, 4)
-                                        .background(.quaternary.opacity(0.55), in: Capsule())
-                                }
-                            }
-                        }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Variables (\(filteredVars.count))")
-                        .font(.headline)
-                    ForEach(filteredVars) { variable in
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack(spacing: 8) {
-                                Text("\(variable.dtype) \(variable.name)(\(variable.dimensions.joined(separator: ", ")))")
-                                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                                Text("[\(variable.shapeSummary)]")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                if variable.isCategorical {
-                                    Text("categorical")
-                                        .font(.caption2.weight(.medium))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 1)
-                                        .background(Color.accentColor.opacity(0.14), in: Capsule())
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                Spacer()
-                                Button("Info") {
-                                    workspace.inspectVariable(
-                                        datasetPath: dataset.filePath,
-                                        varName: variable.name,
-                                        inSession: session.id,
-                                        switchToInfoTab: true
-                                    )
-                                    session.structureSheetDatasetPath = nil
-                                    dismiss()
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                if variable.is2DPlotable {
-                                    Button("Plot") {
-                                        session.structureSheetDatasetPath = nil
-                                        dismiss()
-                                        Task {
-                                            await workspace.selectVariable(
-                                                datasetPath: dataset.filePath,
-                                                varName: variable.name,
-                                                inSession: session.id,
-                                                openInNewTab: false
-                                            )
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                }
-                            }
-
-                            if !variable.attrs.isEmpty {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    ForEach(variable.attrs) { attr in
-                                        HStack(alignment: .top, spacing: 8) {
-                                            Text(":\(attr.key)")
-                                                .font(.system(.caption, design: .monospaced).weight(.medium))
-                                                .foregroundStyle(.secondary)
-                                                .frame(width: 140, alignment: .leading)
-                                            Text(attr.value)
-                                                .font(.system(.caption, design: .monospaced))
-                                                .textSelection(.enabled)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                        }
-                                    }
-                                }
-                                .padding(.leading, 8)
-                            }
-                        }
-                        .padding(10)
-                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                        )
-                    }
-                }
-
-                if !filteredGlobals.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Global Attributes (\(filteredGlobals.count))")
-                            .font(.headline)
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(filteredGlobals) { attr in
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text(":\(attr.key)")
-                                        .font(.system(.caption, design: .monospaced).weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 160, alignment: .leading)
-                                    Text(attr.value)
-                                        .font(.system(.caption, design: .monospaced))
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                        .padding(10)
-                        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                        )
-                    }
-                }
-            }
-            .padding(16)
-        }
     }
 
     @ViewBuilder
@@ -272,23 +117,26 @@ struct DatasetStructureSheet: View {
             return matched.isEmpty ? "// No lines matching \"\(searchText)\"" : matched.joined(separator: "\n")
         }()
 
-        ScrollView([.vertical, .horizontal]) {
-            Text(displayed)
-                .font(.system(size: 12, design: .monospaced))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-        }
-        .background(Color(nsColor: .textBackgroundColor))
-    }
-
-    private func matchesVariable(_ variable: VarMeta, query: String) -> Bool {
-        guard !query.isEmpty else { return true }
-        if variable.name.lowercased().contains(query) || variable.displayTitle.lowercased().contains(query) {
-            return true
-        }
-        return variable.attrs.contains {
-            $0.key.lowercased().contains(query) || $0.value.lowercased().contains(query)
+        if wrapLines {
+            ScrollView(.vertical) {
+                Text(displayed)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(16)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
+        } else {
+            ScrollView([.vertical, .horizontal]) {
+                Text(displayed)
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
+            }
+            .background(Color(nsColor: .textBackgroundColor))
         }
     }
 }

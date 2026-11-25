@@ -47,7 +47,7 @@ def test_rpc_server_end_to_end(engine, grids, tmp_path):
     try:
         ping = rpc.call("ping")
         assert ping["ok"] is True
-        assert ping["result"]["version"] == "0.7.0"
+        assert ping["result"]["version"] == "0.7.1"
         assert ping["result"]["gmt_version"]
 
         ds = rpc.call("open_dataset", {"path": str(regional_nc)})
