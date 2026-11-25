@@ -154,7 +154,7 @@ final class GraticuleTests: XCTestCase {
         await client.configure(pythonPath: python, gmtPath: gmt, sourceRoot: root)
 
         let info = try await client.ping()
-        XCTAssertEqual(info.version, "0.7.1")
+        XCTAssertEqual(info.version, "0.7.2")
         XCTAssertFalse(info.gmtVersion.isEmpty)
 
         let ds = try await client.openDataset(path: tempNC.path)

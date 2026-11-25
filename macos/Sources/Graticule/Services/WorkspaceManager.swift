@@ -245,7 +245,7 @@ final class WorkspaceManager: ObservableObject {
         do {
             let dest = environment.cnBorderDirOverride.trimmingCharacters(in: .whitespacesAndNewlines)
             var zipURL = URL(string: "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip")!
-            let userAgent = "Graticule/0.7.1"
+            let userAgent = "Graticule/0.7.2"
 
             var apiReq = URLRequest(url: URL(string: "https://api.github.com/repos/gmt-china/china-geospatial-data/releases/latest")!)
             apiReq.timeoutInterval = 20

@@ -1095,7 +1095,7 @@ class GMTEngine:
         os.makedirs(target_dir, exist_ok=True)
 
         zip_url = "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip"
-        headers = {"User-Agent": "Graticule/0.7.1"}
+        headers = {"User-Agent": "Graticule/0.7.2"}
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
             tmp_path = tmp_zip.name
