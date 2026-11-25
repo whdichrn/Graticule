@@ -23,7 +23,7 @@ struct WorkspaceWindowView: View {
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             DatasetSidebarView(workspace: workspace, session: session)
-                .navigationSplitViewColumnWidth(min: 205, ideal: 235, max: 320)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 380)
         } detail: {
             PlotCanvasContainerView(workspace: workspace, session: session)
         }
