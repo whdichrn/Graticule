@@ -332,7 +332,11 @@ final class WorkspaceManager: ObservableObject {
         do {
             let info = try await rpc.ping()
             serverInfo = info
-            backendError = nil
+            if info.gsBin == nil {
+                backendError = "Ghostscript (gs) not found in PATH. Install Ghostscript or check Settings (⌘,)."
+            } else {
+                backendError = nil
+            }
         } catch {
             serverInfo = nil
             backendError = error.localizedDescription
@@ -507,16 +511,33 @@ final class WorkspaceManager: ObservableObject {
 
     func inspectDataset(path: String, inSession sessionID: UUID, switchToInfoTab: Bool = true) {
         let target = session(for: sessionID)
-        target.inspectedTarget = .dataset(path)
-        if switchToInfoTab {
+        let nextTarget: InspectTarget = .dataset(path)
+        if target.inspectedTarget != nextTarget {
+            target.inspectedTarget = nextTarget
+        }
+        if switchToInfoTab && target.selectedInspectorTab != .info {
+            target.selectedInspectorTab = .info
+        }
+    }
+
+    func inspectGroup(datasetPath: String, isPlotable: Bool, inSession sessionID: UUID, switchToInfoTab: Bool = true) {
+        let target = session(for: sessionID)
+        let nextTarget: InspectTarget = .group(datasetPath: datasetPath, isPlotable: isPlotable)
+        if target.inspectedTarget != nextTarget {
+            target.inspectedTarget = nextTarget
+        }
+        if switchToInfoTab && target.selectedInspectorTab != .info {
             target.selectedInspectorTab = .info
         }
     }
 
     func inspectVariable(datasetPath: String, varName: String, inSession sessionID: UUID, switchToInfoTab: Bool = true) {
         let target = session(for: sessionID)
-        target.inspectedTarget = .variable(datasetPath: datasetPath, variableName: varName)
-        if switchToInfoTab {
+        let nextTarget: InspectTarget = .variable(datasetPath: datasetPath, variableName: varName)
+        if target.inspectedTarget != nextTarget {
+            target.inspectedTarget = nextTarget
+        }
+        if switchToInfoTab && target.selectedInspectorTab != .info {
             target.selectedInspectorTab = .info
         }
     }

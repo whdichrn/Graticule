@@ -98,8 +98,8 @@ private final class OutlineNode: NSObject {
         switch kind {
         case .dataset(let ds):
             return .dataset(ds.filePath)
-        case .group:
-            return nil
+        case .group(let path, let isPlotableGroup, _):
+            return .group(datasetPath: path, isPlotable: isPlotableGroup)
         case .variable(let ds, let v):
             return .variable(datasetPath: ds.filePath, variableName: v.name)
         }
@@ -511,6 +511,8 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
             switch target {
             case .dataset(let path):
                 return nodeCache["ds:\(path)"]
+            case .group(let path, let isPlotable):
+                return nodeCache["grp:\(isPlotable ? "plot" : "other"):\(path)"]
             case .variable(let path, let name):
                 return nodeCache["var:\(path)::\(name)"]
             }
@@ -540,11 +542,7 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
         // MARK: - NSOutlineViewDelegate
 
         func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
-            guard let node = item as? OutlineNode else { return false }
-            if case .group = node.kind {
-                return false
-            }
-            return true
+            item is OutlineNode
         }
 
         func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -599,18 +597,22 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
             guard !isSyncingSelection, let outlineView else { return }
             let row = outlineView.selectedRow
             guard row >= 0, let node = outlineView.item(atRow: row) as? OutlineNode else { return }
-            switch node.kind {
-            case .dataset(let dataset):
-                workspace.inspectDataset(path: dataset.filePath, inSession: session.id, switchToInfoTab: true)
-            case .variable(let dataset, let variable):
-                workspace.inspectVariable(
-                    datasetPath: dataset.filePath,
-                    varName: variable.name,
-                    inSession: session.id,
-                    switchToInfoTab: true
-                )
-            case .group:
-                break
+            let kind = node.kind
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                switch kind {
+                case .dataset(let dataset):
+                    self.workspace.inspectDataset(path: dataset.filePath, inSession: self.session.id, switchToInfoTab: true)
+                case .group(let datasetPath, let isPlotableGroup, _):
+                    self.workspace.inspectGroup(datasetPath: datasetPath, isPlotable: isPlotableGroup, inSession: self.session.id, switchToInfoTab: true)
+                case .variable(let dataset, let variable):
+                    self.workspace.inspectVariable(
+                        datasetPath: dataset.filePath,
+                        varName: variable.name,
+                        inSession: self.session.id,
+                        switchToInfoTab: true
+                    )
+                }
             }
         }
 
@@ -708,7 +710,7 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
             let row = outlineView.clickedRow
             guard row >= 0, let node = outlineView.item(atRow: row) as? OutlineNode else { return }
 
-            if outlineView.selectedRow != row, !(node.kind.isGroupNode) {
+            if outlineView.selectedRow != row {
                 outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
             }
 
@@ -719,7 +721,7 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
                 inspectItem.representedObject = dataset.filePath
                 menu.addItem(inspectItem)
 
-                let cdlItem = NSMenuItem(title: "Show CDL…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
+                let cdlItem = NSMenuItem(title: "CDL (ncdump -h)…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
                 cdlItem.target = self
                 cdlItem.representedObject = dataset.filePath
                 menu.addItem(cdlItem)
@@ -759,7 +761,7 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
                 inspectItem.representedObject = ctx
                 menu.addItem(inspectItem)
 
-                let cdlItem = NSMenuItem(title: "Show CDL…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
+                let cdlItem = NSMenuItem(title: "CDL (ncdump -h)…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
                 cdlItem.target = self
                 cdlItem.representedObject = dataset.filePath
                 menu.addItem(cdlItem)
@@ -772,7 +774,7 @@ private struct NativeDatasetOutlineView: NSViewRepresentable {
                 menu.addItem(closeItem)
 
             case .group(let datasetPath, _, _):
-                let cdlItem = NSMenuItem(title: "Show CDL…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
+                let cdlItem = NSMenuItem(title: "CDL (ncdump -h)…", action: #selector(menuShowCDL(_:)), keyEquivalent: "")
                 cdlItem.target = self
                 cdlItem.representedObject = datasetPath
                 menu.addItem(cdlItem)

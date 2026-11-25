@@ -251,5 +251,11 @@ final class GraticuleTests: XCTestCase {
         let target = InspectTarget.variable(datasetPath: "/tmp/tid.nc", variableName: "tid")
         XCTAssertEqual(target.datasetPath, "/tmp/tid.nc")
         XCTAssertEqual(target.variableName, "tid")
+        XCTAssertNil(target.isPlotableGroup)
+
+        let groupTarget = InspectTarget.group(datasetPath: "/tmp/tid.nc", isPlotable: true)
+        XCTAssertEqual(groupTarget.datasetPath, "/tmp/tid.nc")
+        XCTAssertNil(groupTarget.variableName)
+        XCTAssertEqual(groupTarget.isPlotableGroup, true)
     }
 }

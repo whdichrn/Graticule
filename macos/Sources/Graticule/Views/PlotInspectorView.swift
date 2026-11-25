@@ -663,6 +663,7 @@ struct PlotInspectorView: View {
         }()
         let dataset = workspace.dataset(for: activeTarget?.datasetPath)
         let variable = workspace.variable(named: activeTarget?.variableName, inDataset: activeTarget?.datasetPath)
+        let groupPlotableFilter = activeTarget?.isPlotableGroup
 
         if dataset == nil && variable == nil {
             AdaptiveEmptyState(
@@ -672,206 +673,281 @@ struct PlotInspectorView: View {
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Form {
-                if let dataset {
-                    Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 6) {
-                                Image(systemName: variable != nil ? "cube" : "doc.text")
-                                    .foregroundStyle(Color.accentColor)
-                                Text(variable?.name ?? dataset.fileName)
-                                    .font(.headline)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                if let variable,
-                                   session.datasetPath == dataset.filePath,
-                                   session.variableName == variable.name {
-                                    Text("Plotted")
-                                        .font(.caption2.weight(.medium))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if let dataset {
+                        let headerTitle: String = {
+                            if let variable {
+                                return variable.name
+                            }
+                            if let isPlotable = groupPlotableFilter {
+                                return isPlotable ? "Plottable Grids" : "Coordinates & Other"
+                            }
+                            return dataset.fileName
+                        }()
+                        infoCard {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: variable != nil ? "cube" : (groupPlotableFilter != nil ? "folder" : "doc.text"))
                                         .foregroundStyle(Color.accentColor)
-                                }
-                            }
-
-                            if let variable, !variable.displayTitle.isEmpty, variable.displayTitle != variable.name {
-                                Text(variable.displayTitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            HStack(spacing: 6) {
-                                if let variable, variable.is2DPlotable {
-                                    Button("Plot") {
-                                        Task {
-                                            await workspace.selectVariable(
-                                                datasetPath: dataset.filePath,
-                                                varName: variable.name,
-                                                inSession: session.id,
-                                                openInNewTab: false
-                                            )
-                                        }
+                                    Text(headerTitle)
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    if let variable,
+                                       session.datasetPath == dataset.filePath,
+                                       session.variableName == variable.name {
+                                        Text("Plotted")
+                                            .font(.caption2.weight(.medium))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                            .foregroundStyle(Color.accentColor)
                                     }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-
-                                    Button("New Tab") {
-                                        Task {
-                                            await workspace.selectVariable(
-                                                datasetPath: dataset.filePath,
-                                                varName: variable.name,
-                                                inSession: session.id,
-                                                openInNewTab: true
-                                            )
-                                        }
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
                                 }
 
-                                Button("CDL…") {
-                                    workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                if let plottedPath = session.datasetPath,
-                                   let plottedVar = session.variableName,
-                                   (plottedPath != activeTarget?.datasetPath || plottedVar != activeTarget?.variableName) {
-                                    Button("Active Plot") {
-                                        workspace.inspectVariable(
-                                            datasetPath: plottedPath,
-                                            varName: plottedVar,
-                                            inSession: session.id,
-                                            switchToInfoTab: true
-                                        )
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .controlSize(.small)
-                                }
-                            }
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-
-                if let variable {
-                    Section("Variable Summary") {
-                        LabeledContent("Dimensions", value: variable.dimensions.joined(separator: ", "))
-                        LabeledContent("Shape", value: variable.shapeSummary)
-                        LabeledContent("Type", value: variable.dtype)
-                        if !variable.units.isEmpty {
-                            LabeledContent("Units", value: variable.units)
-                        }
-                        if let xRange = variable.xRange, xRange.count == 2 {
-                            LabeledContent(variable.isGeographic ? "Lon Range" : "X Range", value: String(format: "%.4g … %.4g", xRange[0], xRange[1]))
-                        }
-                        if let yRange = variable.yRange, yRange.count == 2 {
-                            LabeledContent(variable.isGeographic ? "Lat Range" : "Y Range", value: String(format: "%.4g … %.4g", yRange[0], yRange[1]))
-                        }
-                        if !variable.unsupportedReason.isEmpty {
-                            Text(variable.unsupportedReason)
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-
-                    if !variable.flagValues.isEmpty {
-                        Section("Flag Definitions (\(variable.flagValues.count))") {
-                            ForEach(Array(variable.flagValues.enumerated()), id: \.offset) { idx, fval in
-                                let keyText = abs(fval - fval.rounded()) < 1e-6 ? String(Int(fval.rounded())) : String(format: "%.4g", fval)
-                                let meaning = idx < variable.flagMeanings.count ? variable.flagMeanings[idx].replacingOccurrences(of: "_", with: " ") : ""
-                                HStack(alignment: .top, spacing: 8) {
-                                    Text(keyText)
-                                        .font(.caption.monospacedDigit().weight(.semibold))
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
-                                    Text(meaning.isEmpty ? "Class \(keyText)" : meaning)
+                                if let variable, !variable.displayTitle.isEmpty, variable.displayTitle != variable.name {
+                                    Text(variable.displayTitle)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .textSelection(.enabled)
+                                } else if groupPlotableFilter != nil {
+                                    Text(dataset.fileName)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
                                 }
-                            }
-                        }
-                    }
 
-                    if !variable.attrs.isEmpty {
-                        Section("Variable Attributes") {
-                            ForEach(variable.attrs) { attr in
-                                stackedAttrRow(key: attr.key, value: attr.value)
-                            }
-                        }
-                    }
-                }
-
-                if let dataset {
-                    Section("Dataset") {
-                        LabeledContent("File", value: dataset.fileName)
-                        stackedAttrRow(key: "Path", value: dataset.filePath)
-                        LabeledContent("Variables", value: "\(dataset.plotableVariables.count) plottable · \(dataset.nonPlotableVariables.count) other")
-                        ForEach(dataset.dimensions.keys.sorted(), id: \.self) { dim in
-                            LabeledContent("dim: \(dim)", value: "\(dataset.dimensions[dim] ?? 0)")
-                        }
-                    }
-
-                    if variable == nil && !dataset.variables.isEmpty {
-                        Section("Variables (\(dataset.variables.count))") {
-                            ForEach(dataset.variables) { item in
-                                HStack(spacing: 8) {
-                                    Button {
-                                        workspace.inspectVariable(
-                                            datasetPath: dataset.filePath,
-                                            varName: item.name,
-                                            inSession: session.id,
-                                            switchToInfoTab: true
-                                        )
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 1) {
-                                            Text(item.name)
-                                                .font(.caption.weight(.medium))
-                                                .foregroundStyle(item.is2DPlotable ? .primary : .secondary)
-                                            Text("\(item.dtype) [\(item.shapeSummary)]\(item.units.isEmpty ? "" : " · \(item.units)")")
-                                                .font(.caption2)
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                        }
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    if item.is2DPlotable {
+                                HStack(spacing: 6) {
+                                    if let variable, variable.is2DPlotable {
                                         Button("Plot") {
                                             Task {
                                                 await workspace.selectVariable(
                                                     datasetPath: dataset.filePath,
-                                                    varName: item.name,
+                                                    varName: variable.name,
                                                     inSession: session.id,
                                                     openInNewTab: false
                                                 )
                                             }
                                         }
+                                        .buttonStyle(.borderedProminent)
+                                        .controlSize(.small)
+
+                                        Button("New Tab") {
+                                            Task {
+                                                await workspace.selectVariable(
+                                                    datasetPath: dataset.filePath,
+                                                    varName: variable.name,
+                                                    inSession: session.id,
+                                                    openInNewTab: true
+                                                )
+                                            }
+                                        }
                                         .buttonStyle(.bordered)
-                                        .controlSize(.mini)
+                                        .controlSize(.small)
+                                    }
+
+                                    Button("CDL (ncdump -h)") {
+                                        workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+
+                                    if let plottedPath = session.datasetPath,
+                                       let plottedVar = session.variableName,
+                                       (plottedPath != activeTarget?.datasetPath || plottedVar != activeTarget?.variableName) {
+                                        Button("Active Plot") {
+                                            workspace.inspectVariable(
+                                                datasetPath: plottedPath,
+                                                varName: plottedVar,
+                                                inSession: session.id,
+                                                switchToInfoTab: true
+                                            )
+                                        }
+                                        .buttonStyle(.borderless)
+                                        .controlSize(.small)
                                     }
                                 }
                             }
                         }
                     }
 
-                    if !dataset.globalAttrs.isEmpty {
-                        Section("Global Attributes") {
-                            ForEach(dataset.globalAttrs) { attr in
-                                stackedAttrRow(key: attr.key, value: attr.value)
+                    if let variable {
+                        infoCard(title: "Variable Summary") {
+                            infoKVRow("Dimensions", variable.dimensions.isEmpty ? "scalar" : variable.dimensions.joined(separator: ", "))
+                            Divider()
+                            infoKVRow("Shape", variable.shape.isEmpty ? "scalar" : variable.shapeSummary)
+                            Divider()
+                            infoKVRow("Type", variable.dtype)
+                            if !variable.units.isEmpty {
+                                Divider()
+                                infoKVRow("Units", variable.units)
+                            }
+                            if let xRange = variable.xRange, xRange.count == 2 {
+                                Divider()
+                                infoKVRow(variable.isGeographic ? "Lon Range" : "X Range", String(format: "%.4g … %.4g", xRange[0], xRange[1]))
+                            }
+                            if let yRange = variable.yRange, yRange.count == 2 {
+                                Divider()
+                                infoKVRow(variable.isGeographic ? "Lat Range" : "Y Range", String(format: "%.4g … %.4g", yRange[0], yRange[1]))
+                            }
+                            if !variable.unsupportedReason.isEmpty {
+                                Divider()
+                                Text(variable.unsupportedReason)
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+
+                        if !variable.flagValues.isEmpty {
+                            infoCard(title: "Flag Definitions (\(variable.flagValues.count))") {
+                                ForEach(Array(variable.flagValues.enumerated()), id: \.offset) { idx, fval in
+                                    if idx > 0 { Divider() }
+                                    let keyText = abs(fval - fval.rounded()) < 1e-6 ? String(Int(fval.rounded())) : String(format: "%.4g", fval)
+                                    let meaning = idx < variable.flagMeanings.count ? variable.flagMeanings[idx].replacingOccurrences(of: "_", with: " ") : ""
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text(keyText)
+                                            .font(.caption.monospacedDigit().weight(.semibold))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                                        Text(meaning.isEmpty ? "Class \(keyText)" : meaning)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                            }
+                        }
+
+                        if !variable.attrs.isEmpty {
+                            infoCard(title: "Variable Attributes") {
+                                ForEach(Array(variable.attrs.enumerated()), id: \.element.id) { idx, attr in
+                                    if idx > 0 { Divider() }
+                                    stackedAttrRow(key: attr.key, value: attr.value)
+                                }
+                            }
+                        }
+                    }
+
+                    if let dataset {
+                        let listedVars: [VarMeta] = {
+                            guard variable == nil else { return [] }
+                            if let isPlotable = groupPlotableFilter {
+                                return isPlotable ? dataset.plotableVariables : dataset.nonPlotableVariables
+                            }
+                            return dataset.variables
+                        }()
+
+                        if !listedVars.isEmpty {
+                            let sectionTitle = groupPlotableFilter == nil
+                                ? "Variables (\(listedVars.count))"
+                                : "\(groupPlotableFilter == true ? "Plottable Grids" : "Coordinates & Other") (\(listedVars.count))"
+                            infoCard(title: sectionTitle) {
+                                ForEach(Array(listedVars.enumerated()), id: \.element.id) { idx, item in
+                                    if idx > 0 { Divider() }
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            workspace.inspectVariable(
+                                                datasetPath: dataset.filePath,
+                                                varName: item.name,
+                                                inSession: session.id,
+                                                switchToInfoTab: true
+                                            )
+                                        } label: {
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(item.name)
+                                                    .font(.caption.weight(.medium))
+                                                    .foregroundStyle(item.is2DPlotable ? .primary : .secondary)
+                                                Text("\(item.dtype) [\(item.shape.isEmpty ? "scalar" : item.shapeSummary)]\(item.units.isEmpty ? "" : " · \(item.units)")")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+
+                                        if item.is2DPlotable {
+                                            Button("Plot") {
+                                                Task {
+                                                    await workspace.selectVariable(
+                                                        datasetPath: dataset.filePath,
+                                                        varName: item.name,
+                                                        inSession: session.id,
+                                                        openInNewTab: false
+                                                    )
+                                                }
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .controlSize(.mini)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        infoCard(title: "Dataset") {
+                            infoKVRow("File", dataset.fileName)
+                            Divider()
+                            stackedAttrRow(key: "Path", value: dataset.filePath)
+                            Divider()
+                            infoKVRow("Variables", "\(dataset.plotableVariables.count) plottable · \(dataset.nonPlotableVariables.count) other")
+                            ForEach(dataset.dimensions.keys.sorted(), id: \.self) { dim in
+                                Divider()
+                                infoKVRow("dim: \(dim)", "\(dataset.dimensions[dim] ?? 0)")
+                            }
+                        }
+
+                        if !dataset.globalAttrs.isEmpty {
+                            infoCard(title: "Global Attributes") {
+                                ForEach(Array(dataset.globalAttrs.enumerated()), id: \.element.id) { idx, attr in
+                                    if idx > 0 { Divider() }
+                                    stackedAttrRow(key: attr.key, value: attr.value)
+                                }
                             }
                         }
                     }
                 }
+                .padding(12)
             }
-            .formStyle(.grouped)
+        }
+    }
+
+    @ViewBuilder
+    private func infoCard<Content: View>(title: String? = nil, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let title {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                content()
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.75)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func infoKVRow(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
         }
     }
 

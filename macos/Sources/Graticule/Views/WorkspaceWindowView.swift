@@ -186,9 +186,9 @@ struct WorkspaceWindowView: View {
         if let varName = session.variableName, let path = session.datasetPath {
             let fileName = URL(fileURLWithPath: path).lastPathComponent
             if session.regionHistory.isDrilledDown, let label = session.regionHistory.current?.label {
-                return "\(varName) · \(label)"
+                return "\(varName) — \(fileName) · \(label)"
             }
-            return "\(fileName) — \(varName)"
+            return "\(varName) — \(fileName)"
         }
         return "Graticule"
     }

@@ -11,11 +11,14 @@ enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
 
 enum InspectTarget: Equatable, Hashable, Sendable {
     case dataset(String)
+    case group(datasetPath: String, isPlotable: Bool)
     case variable(datasetPath: String, variableName: String)
 
     var datasetPath: String {
         switch self {
         case .dataset(let path):
+            return path
+        case .group(let path, _):
             return path
         case .variable(let path, _):
             return path
@@ -24,10 +27,19 @@ enum InspectTarget: Equatable, Hashable, Sendable {
 
     var variableName: String? {
         switch self {
-        case .dataset:
+        case .dataset, .group:
             return nil
         case .variable(_, let name):
             return name
+        }
+    }
+
+    var isPlotableGroup: Bool? {
+        switch self {
+        case .group(_, let isPlotable):
+            return isPlotable
+        case .dataset, .variable:
+            return nil
         }
     }
 }
