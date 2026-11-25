@@ -154,7 +154,7 @@ final class GraticuleTests: XCTestCase {
         await client.configure(pythonPath: python, gmtPath: gmt, sourceRoot: root)
 
         let info = try await client.ping()
-        XCTAssertEqual(info.version, "0.6.0")
+        XCTAssertEqual(info.version, "0.7.0")
         XCTAssertFalse(info.gmtVersion.isEmpty)
 
         let ds = try await client.openDataset(path: tempNC.path)
@@ -201,5 +201,55 @@ final class GraticuleTests: XCTestCase {
         XCTAssertTrue(GMTColorPalettes.builtInNames.contains("panoply"))
         XCTAssertTrue(GMTColorPalettes.builtInNames.contains("categorical"))
         XCTAssertFalse(GMTColorPalettes.builtInNames.contains("coolwarm"))
+    }
+
+    func testInspectTargetCDLSummaryAndDimensionlessColorbarTitle() throws {
+        let json = """
+        {
+          "file_path": "/tmp/tid.nc",
+          "file_name": "tid.nc",
+          "dimensions": {"lat": 10, "lon": 20},
+          "dimension_coords": {},
+          "global_attrs": [["title", "Sample TID"]],
+          "variables": [
+            {
+              "name": "tid",
+              "display_title": "Type Identifier",
+              "dimensions": ["lat", "lon"],
+              "shape": [10, 20],
+              "dtype": "int8",
+              "attrs": [["units", "1"], ["long_name", "Type Identifier"]],
+              "is_2d_plotable": true,
+              "x_dim": "lon",
+              "y_dim": "lat",
+              "slice_dims": [],
+              "is_geographic": true,
+              "unsupported_reason": "",
+              "x_range": [-180.0, 180.0],
+              "y_range": [-90.0, 90.0],
+              "v_range": [0.0, 70.0],
+              "flag_values": [0.0, 10.0],
+              "flag_meanings": ["Land", "Singlebeam"],
+              "is_categorical": true,
+              "default_cpt": "categorical",
+              "default_symmetric": false
+            }
+          ]
+        }
+        """
+        let ds = try JSONDecoder().decode(DatasetMeta.self, from: Data(json.utf8))
+        let cfg = PlotConfig.defaultConfig(for: ds.variables[0], dataset: ds, previewLOD: true, previewDPI: 90)
+        XCTAssertEqual(cfg.colorbarTitle, "")
+
+        let cdl = ds.cdlSummary()
+        XCTAssertTrue(cdl.contains("netcdf tid {"))
+        XCTAssertTrue(cdl.contains("lat = 10 ;"))
+        XCTAssertTrue(cdl.contains("int8 tid(lat, lon) ;"))
+        XCTAssertTrue(cdl.contains("tid:units = \"1\" ;"))
+        XCTAssertTrue(cdl.contains(":title = \"Sample TID\" ;"))
+
+        let target = InspectTarget.variable(datasetPath: "/tmp/tid.nc", variableName: "tid")
+        XCTAssertEqual(target.datasetPath, "/tmp/tid.nc")
+        XCTAssertEqual(target.variableName, "tid")
     }
 }

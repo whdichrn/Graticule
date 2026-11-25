@@ -1095,7 +1095,7 @@ class GMTEngine:
         os.makedirs(target_dir, exist_ok=True)
 
         zip_url = "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip"
-        headers = {"User-Agent": "Graticule/0.6.0"}
+        headers = {"User-Agent": "Graticule/0.7.0"}
 
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_zip:
             tmp_path = tmp_zip.name
@@ -1337,7 +1337,7 @@ class GMTEngine:
             if use_cat:
                 cb_args = ["colorbar", cpt_flag, "-Xa5c", "-Ya5c", "-DJBC+w75%/0.3c+h+o0c/1.1c", "-L"]
                 if config.colorbar_title:
-                    cb_args.append(f"-Bx+l{self._label(config.colorbar_title)}")
+                    cb_args.append(f"-By+l{self._label(config.colorbar_title)}")
                 cb_args.extend([f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"])
                 cmds.append(self._merge_options(cb_args, config.colorbar_args))
             else:
@@ -1566,7 +1566,10 @@ class GMTEngine:
                 for a in args[1:]:
                     if a.startswith("-Baf"):
                         config.colorbar_title = cls._ps_unescape(a.split("+l", 1)[1]) if "+l" in a else ""
-                    elif a in ("-C", "-Xa5c", "-Ya5c", "-DJBC+w70%/0.3c+h+o0c/1.1c", f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"): continue
+                    elif a.startswith("-By+l") or a.startswith("-Bx+l"):
+                        config.colorbar_title = cls._ps_unescape(a.split("+l", 1)[1])
+                    elif a in ("-C", "-L", "-Xa5c", "-Ya5c", "-DJBC+w70%/0.3c+h+o0c/1.1c", "-DJBC+w75%/0.3c+h+o0c/1.1c", f"--FONT_ANNOT_PRIMARY={config.annotation_size:g}p", f"--FONT_LABEL={config.label_size:g}p"): continue
+                    elif a.startswith("-C") and a.endswith(".cpt"): continue
                     else: extra.append(a)
                 config.colorbar_args = shlex.join(extra)
             elif module in ("basemap", "text") and (interrupted or not config.show_frame):

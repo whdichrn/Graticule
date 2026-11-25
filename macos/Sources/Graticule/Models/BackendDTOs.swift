@@ -9,6 +9,29 @@ enum InspectorTab: String, CaseIterable, Identifiable, Sendable {
     var id: String { rawValue }
 }
 
+enum InspectTarget: Equatable, Hashable, Sendable {
+    case dataset(String)
+    case variable(datasetPath: String, variableName: String)
+
+    var datasetPath: String {
+        switch self {
+        case .dataset(let path):
+            return path
+        case .variable(let path, _):
+            return path
+        }
+    }
+
+    var variableName: String? {
+        switch self {
+        case .dataset:
+            return nil
+        case .variable(_, let name):
+            return name
+        }
+    }
+}
+
 struct CNBorderStatus: Codable, Sendable, Equatable {
     let installed: Bool
     let l1Path: String?
@@ -165,6 +188,55 @@ struct DatasetMeta: Codable, Sendable, Equatable, Identifiable {
         variables.filter { !$0.is2DPlotable }
     }
 
+    func cdlSummary() -> String {
+        var lines: [String] = []
+        let baseName = fileName.replacingOccurrences(
+            of: #"\.[^.]+$"#,
+            with: "",
+            options: .regularExpression
+        )
+        lines.append("netcdf \(baseName) {")
+
+        if !dimensions.isEmpty {
+            lines.append("dimensions:")
+            for key in dimensions.keys.sorted() {
+                if let size = dimensions[key] {
+                    lines.append("\t\(key) = \(size) ;")
+                }
+            }
+        }
+
+        if !variables.isEmpty {
+            lines.append("variables:")
+            for variable in variables {
+                let dims = variable.dimensions.joined(separator: ", ")
+                lines.append("\t\(variable.dtype) \(variable.name)(\(dims)) ;")
+                for attr in variable.attrs {
+                    let escaped = attr.value
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "\"", with: "\\\"")
+                        .replacingOccurrences(of: "\n", with: "\\n")
+                    lines.append("\t\t\(variable.name):\(attr.key) = \"\(escaped)\" ;")
+                }
+            }
+        }
+
+        if !globalAttrs.isEmpty {
+            lines.append("")
+            lines.append("// global attributes:")
+            for attr in globalAttrs {
+                let escaped = attr.value
+                    .replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"")
+                    .replacingOccurrences(of: "\n", with: "\\n")
+                lines.append("\t\t:\(attr.key) = \"\(escaped)\" ;")
+            }
+        }
+
+        lines.append("}")
+        return lines.joined(separator: "\n")
+    }
+
     enum CodingKeys: String, CodingKey {
         case filePath = "file_path"
         case fileName = "file_name"
@@ -317,6 +389,11 @@ struct PlotConfig: Codable, Sendable, Equatable {
             .compactMap { attrs[$0] }
             .joined(separator: " ")
 
+        let normalizedUnits = variable.units.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let defaultColorbarTitle = (variable.isCategorical || ["1", "none", "unitless", "-"].contains(normalizedUnits))
+            ? ""
+            : variable.units
+
         return PlotConfig(
             gridSpec: "",
             region: region,
@@ -324,7 +401,7 @@ struct PlotConfig: Codable, Sendable, Equatable {
             cpt: variable.defaultCpt,
             cptRange: nil,
             cptContinuous: !variable.isCategorical,
-            colorbarTitle: variable.units,
+            colorbarTitle: defaultColorbarTitle,
             dpi: previewDPI,
             title: variable.displayTitle,
             projectionMode: variable.isGeographic ? "auto" : "manual",

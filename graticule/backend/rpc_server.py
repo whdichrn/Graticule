@@ -15,6 +15,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
@@ -28,10 +29,30 @@ import numpy as np
 from .gmt_engine import GMTEngine, PlotConfig
 from .nc_reader import DatasetMeta, NetCDFMetadataReader
 
-SERVER_VERSION = "0.6.0"
+SERVER_VERSION = "0.7.0"
 HOVER_GRID_SIZE = 65
 PREVIEW_CACHE_LIMIT = 24
 DATASET_CACHE_LIMIT = 32
+
+
+def _cleanup_stale_temp_dirs(max_age_sec: float = 86400.0) -> None:
+    """Best-effort cleanup for orphaned RPC temp dirs left by instant termination."""
+    tmp_root = tempfile.gettempdir()
+    now = time.time()
+    try:
+        entries = os.listdir(tmp_root)
+    except OSError:
+        return
+    for name in entries:
+        if not name.startswith("graticule_rpc_"):
+            continue
+        full = os.path.join(tmp_root, name)
+        try:
+            st = os.stat(full)
+            if now - st.st_mtime >= max_age_sec:
+                shutil.rmtree(full, ignore_errors=True)
+        except OSError:
+            pass
 
 
 def _to_json_safe(value: Any) -> Any:
@@ -157,6 +178,7 @@ class RPCServer:
         self._write_lock = threading.Lock()
         self._state_lock = threading.RLock()
         self._engine: Optional[GMTEngine] = None
+        _cleanup_stale_temp_dirs()
         self._temp_owner = tempfile.TemporaryDirectory(prefix="graticule_rpc_")
         self._preview_cache: OrderedDict[str, str] = OrderedDict()
         self._dataset_cache: OrderedDict[Tuple[str, int, int], DatasetMeta] = OrderedDict()
@@ -568,10 +590,11 @@ class RPCServer:
         with self._state_lock:
             self._pending_futures.discard(fut)
 
-    def close(self) -> None:
+    def close(self, fast: bool = False) -> None:
         self._stop_event.set()
-        self._fast_pool.shutdown(wait=True, cancel_futures=False)
-        self._heavy_pool.shutdown(wait=True, cancel_futures=False)
+        wait_pool = not fast and not self._stop_event.is_set()
+        self._fast_pool.shutdown(wait=wait_pool, cancel_futures=True)
+        self._heavy_pool.shutdown(wait=wait_pool, cancel_futures=True)
         with self._state_lock:
             if self._engine is not None:
                 self._engine.close()
@@ -583,6 +606,18 @@ class RPCServer:
 
 def main() -> int:
     server = RPCServer()
+
+    def _fast_sigterm_exit(_signum, _frame):
+        try:
+            shutil.rmtree(server._temp_owner.name, ignore_errors=True)
+        except Exception:
+            pass
+        os._exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _fast_sigterm_exit)
+    except Exception:
+        pass
     return server.serve()
 
 

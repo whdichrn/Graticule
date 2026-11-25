@@ -99,12 +99,36 @@ private struct AnyDecodableValue: Decodable {
 actor RPCClient {
     private var process: Process?
     private var stdinPipe: Pipe?
+    private let terminationLock = NSLock()
+    private nonisolated(unsafe) var liveProcess: Process?
+    private nonisolated(unsafe) var liveStdinPipe: Pipe?
     private var stdoutTask: Task<Void, Never>?
     private var stderrTask: Task<Void, Never>?
     private var nextID: Int = 1
     private var waiters: [Int: CheckedContinuation<Data, Error>] = [:]
     private var stderrBuffer: [String] = []
     private var launchConfig: (python: String, gmt: String?, root: String)?
+
+    nonisolated func terminateImmediately() {
+        terminationLock.lock()
+        let proc = liveProcess
+        let pipe = liveStdinPipe
+        liveProcess = nil
+        liveStdinPipe = nil
+        terminationLock.unlock()
+
+        try? pipe?.fileHandleForWriting.close()
+        if let proc, proc.isRunning {
+            proc.terminate()
+        }
+    }
+
+    private func setLiveHandles(process: Process?, stdinPipe: Pipe?) {
+        terminationLock.lock()
+        liveProcess = process
+        liveStdinPipe = stdinPipe
+        terminationLock.unlock()
+    }
 
     func configure(pythonPath: String?, gmtPath: String?, sourceRoot: String?) {
         guard let pythonPath, let sourceRoot else {
@@ -165,6 +189,7 @@ actor RPCClient {
         try proc.run()
         self.process = proc
         self.stdinPipe = inPipe
+        setLiveHandles(process: proc, stdinPipe: inPipe)
 
         let outStream = Self.makeLineStream(from: outPipe.fileHandleForReading, label: "io.graticule.rpc.stdout")
         stdoutTask = Task.detached(priority: .userInitiated) { [weak self] in
@@ -256,6 +281,7 @@ actor RPCClient {
     private func handleTermination(status: Int32) {
         process = nil
         stdinPipe = nil
+        setLiveHandles(process: nil, stdinPipe: nil)
         failPending(reason: "exit code \(status). \(stderrSummary())")
     }
 
@@ -476,12 +502,13 @@ actor RPCClient {
             stderrTask?.cancel()
             process = nil
             stdinPipe = nil
+            setLiveHandles(process: nil, stdinPipe: nil)
             return
         }
         _ = try? await callRaw(method: "shutdown")
         try? stdinPipe?.fileHandleForWriting.close()
-        for _ in 0..<30 where proc.isRunning {
-            try? await Task.sleep(for: .milliseconds(50))
+        for _ in 0..<4 where proc.isRunning {
+            try? await Task.sleep(for: .milliseconds(40))
         }
         if proc.isRunning {
             proc.terminate()
@@ -490,6 +517,7 @@ actor RPCClient {
         stderrTask?.cancel()
         process = nil
         stdinPipe = nil
+        setLiveHandles(process: nil, stdinPipe: nil)
         failPending(reason: "Backend shutdown")
     }
 }

@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -46,7 +47,7 @@ def test_rpc_server_end_to_end(engine, grids, tmp_path):
     try:
         ping = rpc.call("ping")
         assert ping["ok"] is True
-        assert ping["result"]["version"] == "0.6.0"
+        assert ping["result"]["version"] == "0.7.0"
         assert ping["result"]["gmt_version"]
 
         ds = rpc.call("open_dataset", {"path": str(regional_nc)})
@@ -147,3 +148,38 @@ def test_rpc_server_end_to_end(engine, grids, tmp_path):
         assert ping2["ok"] is True
     finally:
         rpc.close()
+
+
+def test_rpc_server_fast_sigterm_exit(tmp_path):
+    import glob
+    import tempfile
+    import time
+
+    before = set(glob.glob(os.path.join(tempfile.gettempdir(), "graticule_rpc_*")))
+    proc = subprocess.Popen(
+        [sys.executable, "-B", "-m", "graticule.backend.rpc_server"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+    )
+    try:
+        proc.stdin.write(json.dumps({"id": 1, "method": "ping", "params": {}}) + "\n")
+        proc.stdin.flush()
+        resp = json.loads(proc.stdout.readline())
+        assert resp["ok"] is True
+        created = set(glob.glob(os.path.join(tempfile.gettempdir(), "graticule_rpc_*"))) - before
+
+        t0 = time.monotonic()
+        proc.terminate()
+        rc = proc.wait(timeout=3)
+        elapsed = time.monotonic() - t0
+        assert rc == 0
+        assert elapsed < 0.8
+        for d in created:
+            assert not os.path.exists(d)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=2)

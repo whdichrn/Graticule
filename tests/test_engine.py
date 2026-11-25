@@ -453,3 +453,13 @@ def test_categorical_flag_values_detection_and_render(engine, tmp_path):
     restored = engine.parse_script_to_config(script, cfg)
     assert restored.cpt_categorical is True
     assert list(restored.flag_values) == [0.0, 10.0, 11.0, 40.0, 41.0, 70.0]
+
+    # Regression: non-empty colorbar_title (e.g. units='1') must not pass -Bx+l with -L
+    cfg_titled = replace(cfg, colorbar_title='1')
+    script_titled = engine.generate_script(cfg_titled)
+    assert '-By+l1' in script_titled and '-Bx+l1' not in script_titled
+    out_titled = tmp_path / 'tid_cat_titled.png'
+    engine.render(cfg_titled, str(out_titled))
+    assert out_titled.is_file() and out_titled.stat().st_size > 1000
+    restored_titled = engine.parse_script_to_config(script_titled, cfg_titled)
+    assert restored_titled.colorbar_title == '1'

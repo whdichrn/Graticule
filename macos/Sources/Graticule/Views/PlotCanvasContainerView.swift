@@ -28,9 +28,7 @@ struct PlotCanvasContainerView: View {
     var body: some View {
         ZStack {
             Group {
-                if session.datasetPath == nil {
-                    emptyStateView
-                } else if let render = session.currentRender {
+                if let render = session.currentRender {
                     MapCanvasView(
                         imagePath: render.imagePath,
                         mapBbox: render.mapBbox,
@@ -66,8 +64,10 @@ struct PlotCanvasContainerView: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if workspace.datasets.isEmpty {
+                    emptyStateView
                 } else {
-                    datasetOverviewCard
+                    noActivePlotView
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -95,130 +95,21 @@ struct PlotCanvasContainerView: View {
     }
 
     @ViewBuilder
-    private var datasetOverviewCard: some View {
-        if let dataset = workspace.dataset(for: session.datasetPath) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 28))
-                            .foregroundStyle(Color.accentColor)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(dataset.fileName)
-                                .font(.title3.weight(.semibold))
-                            Text(dataset.filePath)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-                                .textSelection(.enabled)
-                        }
-                        Spacer()
-                        if let firstVar = dataset.plotableVariables.first {
-                            Button("Plot \(firstVar.name)") {
-                                Task {
-                                    await workspace.selectVariable(
-                                        datasetPath: dataset.filePath,
-                                        varName: firstVar.name,
-                                        inSession: session.id,
-                                        openInNewTab: false
-                                    )
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                        }
-                    }
-
-                    if !dataset.dimensions.isEmpty {
-                        HStack(spacing: 8) {
-                            ForEach(dataset.dimensions.keys.sorted(), id: \.self) { dim in
-                                Text("\(dim): \(dataset.dimensions[dim] ?? 0)")
-                                    .font(.caption.monospacedDigit())
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(.quaternary.opacity(0.6), in: Capsule())
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    if dataset.plotableVariables.isEmpty {
-                        AdaptiveEmptyState(
-                            "No Regular 2D Grid Variables",
-                            systemImage: "info.circle",
-                            description: "Inspect variable attributes in the right Info panel."
-                        )
-                    } else {
-                        Text("Plottable Grid Variables (\(dataset.plotableVariables.count))")
-                            .font(.headline)
-
-                        VStack(spacing: 6) {
-                            ForEach(dataset.plotableVariables.prefix(12)) { variable in
-                                HStack(spacing: 10) {
-                                    Image(systemName: variable.sliceDims.isEmpty ? "map" : "square.stack.3d.up")
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 16)
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(variable.name)
-                                            .font(.body.weight(.medium))
-                                        Text("\(variable.displayTitle) · [\(variable.shapeSummary)]")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    Button("Info") {
-                                        workspace.inspectVariable(
-                                            datasetPath: dataset.filePath,
-                                            varName: variable.name,
-                                            inSession: session.id
-                                        )
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
-
-                                    Button("Plot") {
-                                        Task {
-                                            await workspace.selectVariable(
-                                                datasetPath: dataset.filePath,
-                                                varName: variable.name,
-                                                inSession: session.id,
-                                                openInNewTab: false
-                                            )
-                                        }
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.small)
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 7)
-                                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-                            }
-                            if dataset.plotableVariables.count > 12 {
-                                Text("Select any remaining variable in the left sidebar.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+    private var noActivePlotView: some View {
+        let inspectedPath = session.inspectedTarget?.datasetPath ?? workspace.datasets.first?.filePath
+        AdaptiveEmptyState(
+            "Select a Variable to Plot",
+            systemImage: "map",
+            description: "Double-click a plottable grid in the sidebar (or use its plot button) to render. Single-click any file or variable to inspect metadata."
+        ) {
+            if let path = inspectedPath {
+                Button("Inspect Structure (CDL)…") {
+                    workspace.openStructureSheet(datasetPath: path, inSession: session.id)
                 }
-                .padding(24)
-                .frame(maxWidth: 660)
-                .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
-                .padding(28)
+                .buttonStyle(.bordered)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            AdaptiveEmptyState(
-                "Select a Plottable Grid",
-                systemImage: "map",
-                description: "Choose a 2D+ variable from the sidebar to render."
-            )
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var emptyStateView: some View {

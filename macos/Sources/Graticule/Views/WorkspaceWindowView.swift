@@ -157,6 +157,18 @@ struct WorkspaceWindowView: View {
         .sheet(isPresented: $showScriptSheet) {
             ScriptEditorSheet(workspace: workspace, session: session)
         }
+        .sheet(isPresented: Binding(
+            get: { session.structureSheetDatasetPath != nil },
+            set: { presented in
+                if !presented {
+                    session.structureSheetDatasetPath = nil
+                }
+            }
+        )) {
+            if let path = session.structureSheetDatasetPath {
+                DatasetStructureSheet(workspace: workspace, session: session, datasetPath: path)
+            }
+        }
         .focusedSceneValue(\.activeSessionID, sessionID)
         .onReceive(NotificationCenter.default.publisher(for: .graticuleCommand)) { note in
             handleCommandNotification(note)

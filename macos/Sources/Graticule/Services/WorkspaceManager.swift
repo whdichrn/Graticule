@@ -13,6 +13,8 @@ final class PlotSession: ObservableObject, Identifiable {
     let id: UUID
     @Published var datasetPath: String?
     @Published var variableName: String?
+    @Published var inspectedTarget: InspectTarget?
+    @Published var structureSheetDatasetPath: String?
     @Published var config: PlotConfig?
     @Published var recommendedProjections: [ProjectionOption] = []
     @Published var regionHistory = RegionHistoryStack()
@@ -243,7 +245,7 @@ final class WorkspaceManager: ObservableObject {
         do {
             let dest = environment.cnBorderDirOverride.trimmingCharacters(in: .whitespacesAndNewlines)
             var zipURL = URL(string: "https://github.com/gmt-china/china-geospatial-data/releases/latest/download/china-geospatial-data-UTF8.zip")!
-            let userAgent = "Graticule/0.6.0"
+            let userAgent = "Graticule/0.7.0"
 
             var apiReq = URLRequest(url: URL(string: "https://api.github.com/repos/gmt-china/china-geospatial-data/releases/latest")!)
             apiReq.timeoutInterval = 20
@@ -478,17 +480,19 @@ final class WorkspaceManager: ObservableObject {
                         openInNewTab: false
                     )
                 } else {
-                    targetSession.datasetPath = meta.filePath
-                    targetSession.variableName = meta.plotableVariables.first?.name ?? meta.variables.first?.name
-                    targetSession.config = nil
-                    targetSession.currentRender = nil
-                    targetSession.hoverGrid = nil
-                    targetSession.regionHistory = RegionHistoryStack()
+                    targetSession.inspectedTarget = .dataset(meta.filePath)
                     targetSession.selectedInspectorTab = .info
+                    if targetSession.currentRender == nil {
+                        targetSession.datasetPath = nil
+                        targetSession.variableName = nil
+                        targetSession.config = nil
+                        targetSession.hoverGrid = nil
+                        targetSession.regionHistory = RegionHistoryStack()
+                    }
                     if meta.plotableVariables.isEmpty {
-                        targetSession.statusText = "No regular 2D grid found; inspect variable Info."
+                        targetSession.statusText = "No regular 2D grid found; inspect metadata in Info."
                     } else {
-                        targetSession.statusText = "\(meta.plotableVariables.count) plottable variables · Inspecting metadata"
+                        targetSession.statusText = "\(meta.plotableVariables.count) plottable variables · Double-click to plot"
                     }
                 }
             } catch {
@@ -501,11 +505,25 @@ final class WorkspaceManager: ObservableObject {
         }
     }
 
-    func inspectVariable(datasetPath: String, varName: String, inSession sessionID: UUID) {
+    func inspectDataset(path: String, inSession sessionID: UUID, switchToInfoTab: Bool = true) {
         let target = session(for: sessionID)
-        target.datasetPath = datasetPath
-        target.variableName = varName
-        target.selectedInspectorTab = .info
+        target.inspectedTarget = .dataset(path)
+        if switchToInfoTab {
+            target.selectedInspectorTab = .info
+        }
+    }
+
+    func inspectVariable(datasetPath: String, varName: String, inSession sessionID: UUID, switchToInfoTab: Bool = true) {
+        let target = session(for: sessionID)
+        target.inspectedTarget = .variable(datasetPath: datasetPath, variableName: varName)
+        if switchToInfoTab {
+            target.selectedInspectorTab = .info
+        }
+    }
+
+    func openStructureSheet(datasetPath: String, inSession sessionID: UUID) {
+        let target = session(for: sessionID)
+        target.structureSheetDatasetPath = datasetPath
     }
 
     func selectVariable(
@@ -520,14 +538,16 @@ final class WorkspaceManager: ObservableObject {
         }
 
         let target: PlotSession = openInNewTab ? spawnNewTab(from: NSApp.keyWindow) : session(for: sessionID)
-        target.datasetPath = ds.filePath
-        target.variableName = variable.name
+        target.inspectedTarget = .variable(datasetPath: ds.filePath, variableName: variable.name)
 
         guard variable.is2DPlotable else {
             target.selectedInspectorTab = .info
             target.statusText = variable.unsupportedReason.isEmpty ? "Variable is not a 2D plotable grid." : variable.unsupportedReason
             return
         }
+
+        target.datasetPath = ds.filePath
+        target.variableName = variable.name
 
         if target.selectedInspectorTab == .info {
             target.selectedInspectorTab = .map
@@ -789,14 +809,22 @@ final class WorkspaceManager: ObservableObject {
     func closeDataset(path: String) {
         datasets.removeAll { $0.filePath == path }
         for sid in sessionOrder {
-            guard let s = sessions[sid], s.datasetPath == path else { continue }
-            s.datasetPath = nil
-            s.variableName = nil
-            s.config = nil
-            s.currentRender = nil
-            s.hoverGrid = nil
-            s.regionHistory = RegionHistoryStack()
-            s.statusText = "Dataset closed"
+            guard let s = sessions[sid] else { continue }
+            if s.inspectedTarget?.datasetPath == path {
+                s.inspectedTarget = nil
+            }
+            if s.structureSheetDatasetPath == path {
+                s.structureSheetDatasetPath = nil
+            }
+            if s.datasetPath == path {
+                s.datasetPath = nil
+                s.variableName = nil
+                s.config = nil
+                s.currentRender = nil
+                s.hoverGrid = nil
+                s.regionHistory = RegionHistoryStack()
+                s.statusText = "Dataset closed"
+            }
         }
     }
 }

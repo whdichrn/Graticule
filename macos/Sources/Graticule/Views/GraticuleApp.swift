@@ -98,12 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        let semaphore = DispatchSemaphore(value: 0)
-        Task.detached {
-            await WorkspaceManager.shared.rpc.shutdown()
-            semaphore.signal()
-        }
-        _ = semaphore.wait(timeout: .now() + 2.0)
+        WorkspaceManager.shared.rpc.terminateImmediately()
     }
 }
 

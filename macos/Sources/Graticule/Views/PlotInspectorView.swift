@@ -439,7 +439,7 @@ struct PlotInspectorView: View {
                     Text("Discrete").tag("discrete")
                     Text("Categorical").tag("categorical")
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
 
                 if session.config?.cptCategorical == false && session.config?.cptContinuous == false {
                     HStack(spacing: 8) {
@@ -654,29 +654,121 @@ struct PlotInspectorView: View {
 
     @ViewBuilder
     private var infoInspectorForm: some View {
-        let dataset = workspace.dataset(for: session.datasetPath)
-        let variable = workspace.variable(named: session.variableName, inDataset: session.datasetPath)
+        let activeTarget: InspectTarget? = session.inspectedTarget ?? {
+            guard let path = session.datasetPath else { return nil }
+            if let vname = session.variableName {
+                return .variable(datasetPath: path, variableName: vname)
+            }
+            return .dataset(path)
+        }()
+        let dataset = workspace.dataset(for: activeTarget?.datasetPath)
+        let variable = workspace.variable(named: activeTarget?.variableName, inDataset: activeTarget?.datasetPath)
 
         if dataset == nil && variable == nil {
             AdaptiveEmptyState(
                 "No Metadata",
                 systemImage: "info.circle",
-                description: "Open a dataset to inspect its dimensions and attributes."
+                description: "Click a file or variable in the sidebar to inspect its structure and attributes."
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Form {
+                if let dataset {
+                    Section {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: variable != nil ? "cube" : "doc.text")
+                                    .foregroundStyle(Color.accentColor)
+                                Text(variable?.name ?? dataset.fileName)
+                                    .font(.headline)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                if let variable,
+                                   session.datasetPath == dataset.filePath,
+                                   session.variableName == variable.name {
+                                    Text("Plotted")
+                                        .font(.caption2.weight(.medium))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+
+                            if let variable, !variable.displayTitle.isEmpty, variable.displayTitle != variable.name {
+                                Text(variable.displayTitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            HStack(spacing: 6) {
+                                if let variable, variable.is2DPlotable {
+                                    Button("Plot") {
+                                        Task {
+                                            await workspace.selectVariable(
+                                                datasetPath: dataset.filePath,
+                                                varName: variable.name,
+                                                inSession: session.id,
+                                                openInNewTab: false
+                                            )
+                                        }
+                                    }
+                                    .buttonStyle(.borderedProminent)
+                                    .controlSize(.small)
+
+                                    Button("New Tab") {
+                                        Task {
+                                            await workspace.selectVariable(
+                                                datasetPath: dataset.filePath,
+                                                varName: variable.name,
+                                                inSession: session.id,
+                                                openInNewTab: true
+                                            )
+                                        }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+
+                                Button("CDL / Structure…") {
+                                    workspace.openStructureSheet(datasetPath: dataset.filePath, inSession: session.id)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+
+                                if let plottedPath = session.datasetPath,
+                                   let plottedVar = session.variableName,
+                                   (plottedPath != activeTarget?.datasetPath || plottedVar != activeTarget?.variableName) {
+                                    Button("Active Plot") {
+                                        workspace.inspectVariable(
+                                            datasetPath: plottedPath,
+                                            varName: plottedVar,
+                                            inSession: session.id,
+                                            switchToInfoTab: true
+                                        )
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .controlSize(.small)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
                 if let variable {
-                    Section("Variable") {
-                        LabeledContent("Name", value: variable.name)
+                    Section("Variable Summary") {
                         LabeledContent("Dimensions", value: variable.dimensions.joined(separator: ", "))
                         LabeledContent("Shape", value: variable.shapeSummary)
                         LabeledContent("Type", value: variable.dtype)
+                        if !variable.units.isEmpty {
+                            LabeledContent("Units", value: variable.units)
+                        }
                         if let xRange = variable.xRange, xRange.count == 2 {
-                            LabeledContent("X Range", value: String(format: "%.4g … %.4g", xRange[0], xRange[1]))
+                            LabeledContent(variable.isGeographic ? "Lon Range" : "X Range", value: String(format: "%.4g … %.4g", xRange[0], xRange[1]))
                         }
                         if let yRange = variable.yRange, yRange.count == 2 {
-                            LabeledContent("Y Range", value: String(format: "%.4g … %.4g", yRange[0], yRange[1]))
+                            LabeledContent(variable.isGeographic ? "Lat Range" : "Y Range", value: String(format: "%.4g … %.4g", yRange[0], yRange[1]))
                         }
                         if !variable.unsupportedReason.isEmpty {
                             Text(variable.unsupportedReason)
@@ -686,11 +778,22 @@ struct PlotInspectorView: View {
                     }
 
                     if !variable.flagValues.isEmpty {
-                        Section("Flag Definitions") {
+                        Section("Flag Definitions (\(variable.flagValues.count))") {
                             ForEach(Array(variable.flagValues.enumerated()), id: \.offset) { idx, fval in
                                 let keyText = abs(fval - fval.rounded()) < 1e-6 ? String(Int(fval.rounded())) : String(format: "%.4g", fval)
                                 let meaning = idx < variable.flagMeanings.count ? variable.flagMeanings[idx].replacingOccurrences(of: "_", with: " ") : ""
-                                LabeledContent(keyText, value: meaning.isEmpty ? "Class \(keyText)" : meaning)
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text(keyText)
+                                        .font(.caption.monospacedDigit().weight(.semibold))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 4))
+                                    Text(meaning.isEmpty ? "Class \(keyText)" : meaning)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .textSelection(.enabled)
+                                }
                             }
                         }
                     }
@@ -698,12 +801,7 @@ struct PlotInspectorView: View {
                     if !variable.attrs.isEmpty {
                         Section("Variable Attributes") {
                             ForEach(variable.attrs) { attr in
-                                LabeledContent(attr.key) {
-                                    Text(attr.value)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.trailing)
-                                        .textSelection(.enabled)
-                                }
+                                stackedAttrRow(key: attr.key, value: attr.value)
                             }
                         }
                     }
@@ -712,22 +810,62 @@ struct PlotInspectorView: View {
                 if let dataset {
                     Section("Dataset") {
                         LabeledContent("File", value: dataset.fileName)
-                        LabeledContent("Path", value: dataset.filePath)
-                            .lineLimit(2)
+                        stackedAttrRow(key: "Path", value: dataset.filePath)
+                        LabeledContent("Variables", value: "\(dataset.plotableVariables.count) plottable · \(dataset.nonPlotableVariables.count) other")
                         ForEach(dataset.dimensions.keys.sorted(), id: \.self) { dim in
                             LabeledContent("dim: \(dim)", value: "\(dataset.dimensions[dim] ?? 0)")
+                        }
+                    }
+
+                    if variable == nil && !dataset.variables.isEmpty {
+                        Section("Variables (\(dataset.variables.count))") {
+                            ForEach(dataset.variables) { item in
+                                HStack(spacing: 8) {
+                                    Button {
+                                        workspace.inspectVariable(
+                                            datasetPath: dataset.filePath,
+                                            varName: item.name,
+                                            inSession: session.id,
+                                            switchToInfoTab: true
+                                        )
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text(item.name)
+                                                .font(.caption.weight(.medium))
+                                                .foregroundStyle(item.is2DPlotable ? .primary : .secondary)
+                                            Text("\(item.dtype) [\(item.shapeSummary)]\(item.units.isEmpty ? "" : " · \(item.units)")")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    if item.is2DPlotable {
+                                        Button("Plot") {
+                                            Task {
+                                                await workspace.selectVariable(
+                                                    datasetPath: dataset.filePath,
+                                                    varName: item.name,
+                                                    inSession: session.id,
+                                                    openInNewTab: false
+                                                )
+                                            }
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.mini)
+                                    }
+                                }
+                            }
                         }
                     }
 
                     if !dataset.globalAttrs.isEmpty {
                         Section("Global Attributes") {
                             ForEach(dataset.globalAttrs) { attr in
-                                LabeledContent(attr.key) {
-                                    Text(attr.value)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.trailing)
-                                        .textSelection(.enabled)
-                                }
+                                stackedAttrRow(key: attr.key, value: attr.value)
                             }
                         }
                     }
@@ -735,5 +873,21 @@ struct PlotInspectorView: View {
             }
             .formStyle(.grouped)
         }
+    }
+
+    @ViewBuilder
+    private func stackedAttrRow(key: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(key)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 1)
     }
 }
